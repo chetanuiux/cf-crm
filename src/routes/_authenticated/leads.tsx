@@ -235,7 +235,7 @@ function LeadsPage() {
       <div>
         <h1 className="text-2xl font-semibold">Leads</h1>
         <p className="text-sm text-muted-foreground">
-          Incoming leads from the marketing site, LinkedIn Ads, Calendly, CallRail, anonymous client flow, and manual entry
+          Incoming leads from the marketing site, LinkedIn Ads, Calendly, CallRail, anonymous client flow, and manual entry.
         </p>
       </div>
 
