@@ -1,0 +1,1 @@
+ALTER TABLE public.firm_contacts ADD COLUMN IF NOT EXISTS notes TEXT;
