@@ -7,7 +7,7 @@ import { ROLE_LABEL } from "@/lib/labels";
 import { DEFAULT_PAGE_SIZE } from "@/lib/pagination";
 import {
   LayoutDashboard, Building2, Users, FileText,
-  StickyNote, BarChart3, Settings, LogOut, Loader2, TrendingUp, Calendar, UserPlus, UserCog, MessageSquare, LifeBuoy, Inbox,
+  StickyNote, BarChart3, Settings, LogOut, Loader2, TrendingUp, Calendar, UserPlus, UserCog, MessageSquare, LifeBuoy, Inbox, BellRing,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -30,6 +30,7 @@ function initials(nameOrEmail: string) {
 const nav: { to: string; label: string; icon: any; allow?: AppRole[] }[] = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/leads", label: "Leads", icon: Inbox, allow: ["super_admin", "admin", "sales_team_lead", "sales", "operations_team_lead", "operations"] },
+  { to: "/follow-ups-due", label: "Follow Ups Due", icon: BellRing, allow: ["super_admin", "admin", "sales_team_lead", "sales"] },
   { to: "/firms", label: "Firms", icon: Building2 },
   // { to: "/calendar", label: "Calendar", icon: Calendar },
 
@@ -64,6 +65,29 @@ function AuthedLayout() {
         .select("id", { count: "exact", head: true })
         .eq("status", "new");
       return count ?? 0;
+    },
+    refetchInterval: 60_000,
+  });
+
+  // Sidebar badge for Follow Ups Due — mirrors the "due now" (overdue + today)
+  // bucket shown on that page. Sales reps see just their own firms; leads/admins see the team.
+  const isSalesLeadOrAdmin = roles.some(r => ["super_admin", "admin", "sales_team_lead"].includes(r));
+  const canSeeFollowUps = isSalesLeadOrAdmin || roles.includes("sales");
+  const { data: followUpsDueCount = 0 } = useQuery({
+    queryKey: ["follow-ups-due-count", user?.id, isSalesLeadOrAdmin],
+    enabled: !!user && canSeeFollowUps,
+    queryFn: async () => {
+      let query = supabase
+        .from("firms")
+        .select("next_follow_up_date, reconnect_date")
+        .eq("archived", false)
+        .not("sales_status", "in", '("signed_up","lost_not_interested")');
+      if (!isSalesLeadOrAdmin) query = query.eq("assigned_account_manager", user!.id);
+      const { data } = await query;
+      const today = new Date().toISOString().slice(0, 10);
+      return (data ?? []).filter(
+        f => (f.next_follow_up_date && f.next_follow_up_date <= today) || (f.reconnect_date && f.reconnect_date <= today),
+      ).length;
     },
     refetchInterval: 60_000,
   });
@@ -117,7 +141,8 @@ function AuthedLayout() {
           {nav.filter(item => !item.allow || item.allow.some(r => roles.includes(r))).map(item => {
             const Icon = item.icon;
             const active = pathname === item.to || pathname.startsWith(item.to + "/");
-            const showBadge = item.to === "/leads" && newLeadsCount > 0;
+            const badgeCount = item.to === "/leads" ? newLeadsCount : item.to === "/follow-ups-due" ? followUpsDueCount : 0;
+            const showBadge = badgeCount > 0;
             return (
               <Link key={item.to} to={item.to}
                 className={cn(
@@ -133,7 +158,7 @@ function AuthedLayout() {
                     "ml-auto text-[10px] font-semibold rounded-full px-1.5 py-0.5 min-w-[18px] text-center leading-tight",
                     active ? "bg-sidebar-primary-foreground/20 text-sidebar-primary-foreground" : "bg-primary text-primary-foreground"
                   )}>
-                    {newLeadsCount > 99 ? "99+" : newLeadsCount}
+                    {badgeCount > 99 ? "99+" : badgeCount}
                   </span>
                 )}
               </Link>

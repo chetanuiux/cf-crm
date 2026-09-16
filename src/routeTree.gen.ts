@@ -21,6 +21,7 @@ import { Route as AuthenticatedReportsRouteImport } from './routes/_authenticate
 import { Route as AuthenticatedNotificationsRouteImport } from './routes/_authenticated/notifications'
 import { Route as AuthenticatedNotesRouteImport } from './routes/_authenticated/notes'
 import { Route as AuthenticatedLeadsRouteImport } from './routes/_authenticated/leads'
+import { Route as AuthenticatedFollowUpsDueRouteImport } from './routes/_authenticated/follow-ups-due'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedCommissionsRouteImport } from './routes/_authenticated/commissions'
 import { Route as AuthenticatedCalendarRouteImport } from './routes/_authenticated/calendar'
@@ -93,6 +94,12 @@ const AuthenticatedLeadsRoute = AuthenticatedLeadsRouteImport.update({
   path: '/leads',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedFollowUpsDueRoute =
+  AuthenticatedFollowUpsDueRouteImport.update({
+    id: '/follow-ups-due',
+    path: '/follow-ups-due',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
@@ -146,6 +153,7 @@ export interface FileRoutesByFullPath {
   '/calendar': typeof AuthenticatedCalendarRoute
   '/commissions': typeof AuthenticatedCommissionsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/follow-ups-due': typeof AuthenticatedFollowUpsDueRoute
   '/leads': typeof AuthenticatedLeadsRoute
   '/notes': typeof AuthenticatedNotesRoute
   '/notifications': typeof AuthenticatedNotificationsRoute
@@ -167,6 +175,7 @@ export interface FileRoutesByTo {
   '/calendar': typeof AuthenticatedCalendarRoute
   '/commissions': typeof AuthenticatedCommissionsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/follow-ups-due': typeof AuthenticatedFollowUpsDueRoute
   '/leads': typeof AuthenticatedLeadsRoute
   '/notes': typeof AuthenticatedNotesRoute
   '/notifications': typeof AuthenticatedNotificationsRoute
@@ -190,6 +199,7 @@ export interface FileRoutesById {
   '/_authenticated/calendar': typeof AuthenticatedCalendarRoute
   '/_authenticated/commissions': typeof AuthenticatedCommissionsRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
+  '/_authenticated/follow-ups-due': typeof AuthenticatedFollowUpsDueRoute
   '/_authenticated/leads': typeof AuthenticatedLeadsRoute
   '/_authenticated/notes': typeof AuthenticatedNotesRoute
   '/_authenticated/notifications': typeof AuthenticatedNotificationsRoute
@@ -213,6 +223,7 @@ export interface FileRouteTypes {
     | '/calendar'
     | '/commissions'
     | '/dashboard'
+    | '/follow-ups-due'
     | '/leads'
     | '/notes'
     | '/notifications'
@@ -234,6 +245,7 @@ export interface FileRouteTypes {
     | '/calendar'
     | '/commissions'
     | '/dashboard'
+    | '/follow-ups-due'
     | '/leads'
     | '/notes'
     | '/notifications'
@@ -256,6 +268,7 @@ export interface FileRouteTypes {
     | '/_authenticated/calendar'
     | '/_authenticated/commissions'
     | '/_authenticated/dashboard'
+    | '/_authenticated/follow-ups-due'
     | '/_authenticated/leads'
     | '/_authenticated/notes'
     | '/_authenticated/notifications'
@@ -362,6 +375,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedLeadsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/follow-ups-due': {
+      id: '/_authenticated/follow-ups-due'
+      path: '/follow-ups-due'
+      fullPath: '/follow-ups-due'
+      preLoaderRoute: typeof AuthenticatedFollowUpsDueRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/dashboard': {
       id: '/_authenticated/dashboard'
       path: '/dashboard'
@@ -442,6 +462,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedCalendarRoute: typeof AuthenticatedCalendarRoute
   AuthenticatedCommissionsRoute: typeof AuthenticatedCommissionsRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
+  AuthenticatedFollowUpsDueRoute: typeof AuthenticatedFollowUpsDueRoute
   AuthenticatedLeadsRoute: typeof AuthenticatedLeadsRoute
   AuthenticatedNotesRoute: typeof AuthenticatedNotesRoute
   AuthenticatedNotificationsRoute: typeof AuthenticatedNotificationsRoute
@@ -461,6 +482,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedCalendarRoute: AuthenticatedCalendarRoute,
   AuthenticatedCommissionsRoute: AuthenticatedCommissionsRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
+  AuthenticatedFollowUpsDueRoute: AuthenticatedFollowUpsDueRoute,
   AuthenticatedLeadsRoute: AuthenticatedLeadsRoute,
   AuthenticatedNotesRoute: AuthenticatedNotesRoute,
   AuthenticatedNotificationsRoute: AuthenticatedNotificationsRoute,
