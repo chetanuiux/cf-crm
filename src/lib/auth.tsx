@@ -5,7 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 export type AppRole = "super_admin" | "admin" | "sales_team_lead" | "sales" | "operations_team_lead" | "operations" | "support";
 
 /** Roles allowed to open /applications */
-export const APPLICATIONS_VIEW_ROLES: AppRole[] = ["super_admin", "admin", "operations"];
+export const APPLICATIONS_VIEW_ROLES: AppRole[] = ["super_admin", "admin", "operations", "operations_team_lead"];
 
 interface AuthState {
   user: User | null;

@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { mapPlatformSubstatus, STATUS_LABELS } from '@/lib/pipeline-status';
 
 /** Public live website — sole source for CRM Applications page links and copy. */
 export const LIVE_PLATFORM_URL = 'https://www.casefunders.com';
@@ -23,14 +24,7 @@ export type PlatformApplication = {
 };
 
 export function mapPlatformStatus(raw: string, fundedAmount?: number | null): string {
-  const s = (raw || '').trim();
-  if (s === 'Client Invited') return 'link_sent';
-  if (s === 'Application Started') return 'application_started';
-  if (s === 'No Offer') return 'no_offers';
-  if (s === 'Error') return 'issue_stuck';
-  if (s.toLowerCase() === 'funded' || (fundedAmount != null && fundedAmount > 0)) return 'funded';
-  if (!s) return 'link_not_sent';
-  return 'application_started';
+  return mapPlatformSubstatus(raw, fundedAmount);
 }
 
 export async function listPlatformApplications(): Promise<PlatformApplication[]> {
@@ -64,7 +58,9 @@ export function platformApplicationUrl(app: {
   return `${base}/applications/`;
 }
 
-export function platformStatusLabel(raw: string): string {
-  const s = (raw || '').trim();
-  return s || 'None';
+export function platformStatusLabel(raw: string, fundedAmount?: number | null): string {
+  if (!(raw || '').trim() && (fundedAmount == null || fundedAmount <= 0)) return 'None';
+  const mapped = mapPlatformSubstatus(raw, fundedAmount);
+  return STATUS_LABELS[mapped] ?? ((raw || '').trim() || 'None');
 }
+

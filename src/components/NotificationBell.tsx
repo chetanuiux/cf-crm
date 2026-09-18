@@ -10,7 +10,25 @@ import {
   useRecentNotifications,
   useMarkRead,
   useMarkAllRead,
+  type Notification,
 } from "@/hooks/useNotifications";
+
+function openNotification(
+  n: Notification,
+  navigate: ReturnType<typeof useNavigate>,
+  markRead: (id: string) => void,
+) {
+  if (!n.read) markRead(n.id);
+  if (n.firm_id) {
+    navigate({ to: "/firms/$firmId", params: { firmId: n.firm_id } });
+    return;
+  }
+  if (n.platform_session_id) {
+    navigate({ to: "/applications" });
+    return;
+  }
+  navigate({ to: "/leads", search: { page: 1, limit: DEFAULT_PAGE_SIZE, channel: "all", status: "new", q: "" } });
+}
 
 export function NotificationBell() {
   const { data: unreadCount = 0 } = useUnreadCount();
@@ -70,10 +88,7 @@ export function NotificationBell() {
                   "w-full text-left px-3 py-2.5 hover:bg-muted/60 transition-colors flex items-start gap-2.5",
                   !n.read && "bg-primary/5",
                 )}
-                onClick={() => {
-                  if (!n.read) markRead(n.id);
-                  navigate({ to: "/leads", search: { page: 1, limit: DEFAULT_PAGE_SIZE, channel: "all", status: "new", q: "" } });
-                }}
+                onClick={() => openNotification(n, navigate, markRead)}
               >
                 {/* Unread dot */}
                 <span

@@ -1,6 +1,13 @@
+import { STATUS_LABELS } from "@/lib/pipeline-status";
+
 // Human-readable labels and badge tones for all enums.
 export const titleize = (s: string | null | undefined) =>
   (s ?? "").split("_").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+
+export function statusLabel(s: string | null | undefined): string {
+  if (!s) return "";
+  return STATUS_LABELS[s] ?? titleize(s);
+}
 
 export const formatLocation = (city: string | null | undefined, state: string | null | undefined) =>
   [city, state].filter(Boolean).join(", ") || "—";
@@ -8,14 +15,14 @@ export const formatLocation = (city: string | null | undefined, state: string | 
 export type Tone = "neutral" | "info" | "success" | "warning" | "destructive" | "muted";
 
 export function salesStatusTone(s: string): Tone {
-  if (["signed_up","demo_completed_signed_up"].includes(s)) return "success";
-  if (["lost_not_interested","dnc","demo_completed_didnt_sign_up"].includes(s)) return "destructive";
-  if (["demo_no_show","demo_needs_reschedule"].includes(s)) return "warning";
-  if (["new_lead","contacted","reconnect_later"].includes(s)) return "muted";
+  if (["signed_up", "demo_completed_signed_up", "onboarding_approved", "first_case_funded", "three_cases_funded"].includes(s)) return "success";
+  if (["lost_not_interested", "dnc", "demo_completed_didnt_sign_up"].includes(s)) return "destructive";
+  if (["demo_no_show", "demo_needs_reschedule"].includes(s)) return "warning";
+  if (["new_lead", "contacted", "reconnect_later"].includes(s)) return "muted";
   return "info";
 }
 export function onboardingTone(s: string): Tone {
-  if (s === "complete" || s === "ready_for_first_application") return "success";
+  if (["complete", "ready_for_first_application", "onboarding_approved", "first_case_funded", "three_cases_funded"].includes(s)) return "success";
   if (s === "not_started") return "muted";
   return "info";
 }
@@ -26,9 +33,9 @@ export function paymentSetupTone(s: string): Tone {
   return "info";
 }
 export function applicationTone(s: string): Tone {
-  if (["funded", "paid_to_firm", "approved", "client_selected_offer"].includes(s)) return "success";
-  if (["declined", "issue_stuck", "no_offers", "cancelled"].includes(s)) return "destructive";
-  if (["link_not_sent", "link_sent"].includes(s)) return "muted";
+  if (["funded", "paid_to_firm", "approved", "client_selected_offer", "funds_in_transit"].includes(s)) return "success";
+  if (["declined", "issue_stuck", "no_offers", "cancelled", "error", "client_declined_offers", "no_offers_available", "application_withdrawn"].includes(s)) return "destructive";
+  if (["link_not_sent", "link_sent", "application_invite_sent"].includes(s)) return "muted";
   return "info";
 }
 export function fundingTone(s: string): Tone {

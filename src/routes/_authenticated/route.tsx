@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import { NotificationBell } from "@/components/NotificationBell";
 import { useNotificationsRealtime } from "@/hooks/useNotifications";
+import { useFollowUpProcessor } from "@/hooks/useFollowUpProcessor";
 
 export const Route = createFileRoute("/_authenticated")({ component: AuthedLayout });
 
@@ -30,7 +31,7 @@ function initials(nameOrEmail: string) {
 const nav: { to: string; label: string; icon: any; allow?: AppRole[] }[] = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/leads", label: "Leads", icon: Inbox, allow: ["super_admin", "admin", "sales_team_lead", "sales", "operations_team_lead", "operations"] },
-  { to: "/follow-ups-due", label: "Follow Ups Due", icon: BellRing, allow: ["super_admin", "admin", "sales_team_lead", "sales"] },
+  { to: "/follow-ups-due", label: "Follow Ups Due", icon: BellRing, allow: ["super_admin", "admin", "sales_team_lead", "sales", "operations_team_lead", "operations"] },
   { to: "/firms", label: "Firms", icon: Building2 },
   // { to: "/calendar", label: "Calendar", icon: Calendar },
 
@@ -54,6 +55,8 @@ function AuthedLayout() {
 
   // Keep notification badge + dropdown fresh via Realtime
   useNotificationsRealtime();
+  const canSeeFollowUps = roles.some(r => ["super_admin", "admin", "sales_team_lead", "sales", "operations_team_lead", "operations"].includes(r));
+  useFollowUpProcessor(!!user && canSeeFollowUps);
 
   const canSeeleads = roles.some(r => ["super_admin", "admin", "sales_team_lead", "sales", "operations_team_lead", "operations"].includes(r));
   const { data: newLeadsCount = 0 } = useQuery({
@@ -71,23 +74,20 @@ function AuthedLayout() {
 
   // Sidebar badge for Follow Ups Due — mirrors the "due now" (overdue + today)
   // bucket shown on that page. Sales reps see just their own firms; leads/admins see the team.
-  const isSalesLeadOrAdmin = roles.some(r => ["super_admin", "admin", "sales_team_lead"].includes(r));
-  const canSeeFollowUps = isSalesLeadOrAdmin || roles.includes("sales");
+  const isSalesLeadOrAdmin = roles.some(r => ["super_admin", "admin", "sales_team_lead", "operations_team_lead"].includes(r));
   const { data: followUpsDueCount = 0 } = useQuery({
     queryKey: ["follow-ups-due-count", user?.id, isSalesLeadOrAdmin],
     enabled: !!user && canSeeFollowUps,
     queryFn: async () => {
+      const endOfToday = `${new Date().toISOString().slice(0, 10)}T23:59:59.999Z`;
       let query = supabase
-        .from("firms")
-        .select("next_follow_up_date, reconnect_date")
-        .eq("archived", false)
-        .not("sales_status", "in", '("signed_up","lost_not_interested")');
-      if (!isSalesLeadOrAdmin) query = query.eq("assigned_account_manager", user!.id);
-      const { data } = await query;
-      const today = new Date().toISOString().slice(0, 10);
-      return (data ?? []).filter(
-        f => (f.next_follow_up_date && f.next_follow_up_date <= today) || (f.reconnect_date && f.reconnect_date <= today),
-      ).length;
+        .from("follow_ups")
+        .select("id", { count: "exact", head: true })
+        .in("status", ["pending", "notified"])
+        .lte("due_at", endOfToday);
+      if (!isSalesLeadOrAdmin) query = query.eq("assigned_to", user!.id);
+      const { count } = await query;
+      return count ?? 0;
     },
     refetchInterval: 60_000,
   });

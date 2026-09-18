@@ -86,7 +86,7 @@ function NotificationsPage() {
             Notifications
           </h1>
           <p className="text-sm text-muted-foreground">
-            Alerts for new leads and CRM activity.
+            Alerts for new leads, sales follow-ups, and application follow-ups.
           </p>
         </div>
         {unreadCount > 0 && (
@@ -150,7 +150,9 @@ function NotificationsPage() {
                   )}
                   onClick={() => {
                     if (!n.read) markRead(n.id);
-                    if (n.lead_id) navigateGlobal({ to: "/leads", search: { page: 1, limit: DEFAULT_PAGE_SIZE, channel: "all", status: "new", q: "" } });
+                    if (n.firm_id) navigateGlobal({ to: "/firms/$firmId", params: { firmId: n.firm_id } });
+                    else if (n.platform_session_id) navigateGlobal({ to: "/applications" });
+                    else if (n.lead_id) navigateGlobal({ to: "/leads", search: { page: 1, limit: DEFAULT_PAGE_SIZE, channel: "all", status: "new", q: "" } });
                   }}
                 >
                   {/* Unread dot */}

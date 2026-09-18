@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { titleize, type Tone } from "@/lib/labels";
+import { statusLabel, type Tone } from "@/lib/labels";
 
 const toneClass: Record<Tone, string> = {
   neutral: "bg-secondary text-secondary-foreground",
@@ -14,7 +14,7 @@ export function StatusBadge({ value, tone = "neutral", className }: { value: str
   if (!value) return <span className="text-muted-foreground text-xs">—</span>;
   return (
     <span className={cn("inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium whitespace-nowrap", toneClass[tone], className)}>
-      {titleize(value)}
+      {statusLabel(value)}
     </span>
   );
 }

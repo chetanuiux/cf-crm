@@ -9,6 +9,9 @@ export type Notification = {
   title: string;
   message: string;
   lead_id: string | null;
+  firm_id?: string | null;
+  follow_up_id?: string | null;
+  platform_session_id?: string | null;
   read: boolean;
   created_at: string;
 };

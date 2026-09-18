@@ -14,14 +14,15 @@ import { Trash2 } from "lucide-react";
 import { StatusBadge } from "@/components/StatusBadge";
 import { PaginationBar } from "@/components/PaginationBar";
 import { StateCombobox } from "@/components/StateCombobox";
-import { salesStatusTone, onboardingTone, fmtDate, fmtDateTime } from "@/lib/labels";
+import { salesStatusTone, onboardingTone, fmtDate, fmtDateTime, statusLabel } from "@/lib/labels";
+import { SALES_FLOW, SALES_BRANCHES, ONBOARDING_FLOW } from "@/lib/pipeline-status";
 import { formatPhone } from "@/lib/format-phone";
 import { toast } from "sonner";
 import { applyDemoFirmFilters, excludeDemoRecords } from "@/lib/demo-data";
 import { PAGE_SIZES, DEFAULT_PAGE_SIZE, type PageSize } from "@/lib/pagination";
 
-const SALES = ["new_lead","contacted","interested","demo_booked","demo_completed","demo_no_show","demo_needs_reschedule","follow_up_after_demo","signup_link_sent","signed_up","lost_not_interested","reconnect_later"] as const;
-const ONBOARD = ["not_started","signup_submitted","firm_profile_incomplete","users_pending","payment_setup_pending","training_pending","ready_for_first_application","complete"] as const;
+const SALES = [...SALES_FLOW, ...SALES_BRANCHES] as const;
+const ONBOARD = ["not_started", ...ONBOARDING_FLOW] as const;
 
 export const Route = createFileRoute("/_authenticated/firms/")({
   component: FirmsPage,
@@ -185,12 +186,12 @@ function FirmsPage() {
               <SelectSeparator />
               <SelectGroup>
                 <SelectLabel>Sales status</SelectLabel>
-                {SALES.map(s => <SelectItem key={`sales:${s}`} value={`sales:${s}`}>{s.replace(/_/g," ")}</SelectItem>)}
+                {SALES.map(s => <SelectItem key={`sales:${s}`} value={`sales:${s}`}>{statusLabel(s)}</SelectItem>)}
               </SelectGroup>
               <SelectSeparator />
               <SelectGroup>
                 <SelectLabel>Onboarding stage</SelectLabel>
-                {ONBOARD.map(s => <SelectItem key={`onboarding:${s}`} value={`onboarding:${s}`}>{s.replace(/_/g," ")}</SelectItem>)}
+                {ONBOARD.map(s => <SelectItem key={`onboarding:${s}`} value={`onboarding:${s}`}>{statusLabel(s)}</SelectItem>)}
               </SelectGroup>
             </SelectContent>
           </Select>

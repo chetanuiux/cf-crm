@@ -18,7 +18,14 @@ import {
   platformStatusLabel,
 } from "@/lib/platform-applications";
 
-export const Route = createFileRoute("/_authenticated/applications")({ component: ApplicationsRoute });
+type ApplicationsSearch = { session?: string };
+
+export const Route = createFileRoute("/_authenticated/applications")({
+  component: ApplicationsRoute,
+  validateSearch: (raw: Record<string, unknown>): ApplicationsSearch => ({
+    session: typeof raw.session === "string" && raw.session ? raw.session : undefined,
+  }),
+});
 
 
 function ApplicationsRoute() {
@@ -38,6 +45,8 @@ function ApplicationsRoute() {
 }
 
 function ApplicationsPage() {
+  const { session: sessionFilter } = Route.useSearch();
+  const navigate = Route.useNavigate();
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
   const [attorney, setAttorney] = useState("all");
@@ -53,7 +62,8 @@ function ApplicationsPage() {
   ).sort();
 
   const filtered = rows.filter((r) => {
-    const label = platformStatusLabel(r.status);
+    if (sessionFilter) return r.session_id === sessionFilter;
+    const label = platformStatusLabel(r.status, r.funded_amount);
     const q = search.toLowerCase();
     const matchesSearch =
       !q ||
@@ -84,7 +94,7 @@ function ApplicationsPage() {
         <div>
           <h1 className="text-2xl font-semibold">Applications</h1>
           <p className="text-sm text-muted-foreground">
-            Live from www.casefunders.com — {filtered.length} of {rows.length} shown (not stored in CRM)
+            Live from www.casefunders.com — {filtered.length} of {rows.length} shown
           </p>
           {error && (
             <p className="text-sm text-destructive mt-1">
@@ -98,45 +108,64 @@ function ApplicationsPage() {
         </Button>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-        {[
-          { label: "Total Applications",  count: rows.length,                                                    badge: "All",     value: "all",                 icon: Files,         color: "bg-blue-50 text-blue-600 border-blue-200"   },
-          { label: "Application Started", count: rows.filter(r => r.status?.trim() === "Application Started").length, badge: "Started", value: "Application Started", icon: Play,          color: "bg-indigo-50 text-indigo-600 border-indigo-200" },
-          { label: "No Offer",            count: rows.filter(r => r.status?.trim() === "No Offer").length,            badge: "No Offer",value: "No Offer",            icon: XCircle,       color: "bg-rose-50 text-rose-600 border-rose-200"   },
-          { label: "Client Invited",      count: rows.filter(r => r.status?.trim() === "Client Invited").length,      badge: "Invited", value: "Client Invited",      icon: UserPlus,      color: "bg-purple-50 text-purple-600 border-purple-200" },
-          { label: "Application Error",   count: rows.filter(r => r.status?.trim() === "Error").length,               badge: "Error",   value: "Error",               icon: AlertTriangle, color: "bg-red-50 text-red-600 border-red-200"      },
-        ].map(({ label, count, badge, value, icon: Icon, color }) => (
-          <Card key={value} className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => setStatus(value)}>
-            <CardContent className="p-4">
-              <p className="text-sm text-muted-foreground mb-1">{label}</p>
-              <div className="flex items-end justify-between gap-2">
-                <span className="text-3xl font-bold">{isLoading ? "—" : count}</span>
-                <span
-                  className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full border ${color} ${status === value ? "ring-2 ring-offset-1 ring-current" : ""}`}
-                >
-                  <Icon className="h-3 w-3" />
-                  {badge}
-                </span>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      {sessionFilter && (
+        <div className="flex items-center gap-2 text-sm bg-muted/50 border rounded-md px-3 py-2">
+          <span>
+            {isLoading
+              ? 'Looking up that application…'
+              : filtered.length
+                ? 'Showing the application from that follow-up.'
+                : "That application hasn't synced from the site yet, or no longer matches."}
+          </span>
+          <Button variant="link" size="sm" className="h-auto p-0" onClick={() => navigate({ search: {} })}>
+            Clear filter
+          </Button>
+        </div>
+      )}
 
-      <Card>
-        <CardContent className="p-3 flex flex-wrap gap-2 items-center">
-          <Input placeholder="Search client, firm, email…" value={search} onChange={e => setSearch(e.target.value)} className="max-w-xs" />
-          <Select value={attorney} onValueChange={setAttorney}>
-            <SelectTrigger className="w-[220px]"><SelectValue placeholder="All attorneys" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All attorneys</SelectItem>
-              {attorneyOptions.map(a => (
-                <SelectItem key={a} value={a}>{a}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </CardContent>
-      </Card>
+      {!sessionFilter && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+          {[
+            { label: "Total Applications",  count: rows.length,                                                    badge: "All",     value: "all",                          icon: Files,         color: "bg-blue-50 text-blue-600 border-blue-200"   },
+            { label: "Invite Sent",         count: rows.filter(r => mapPlatformStatus(r.status, r.funded_amount) === "application_invite_sent").length, badge: "Invited", value: "Application Invite Sent", icon: UserPlus,      color: "bg-purple-50 text-purple-600 border-purple-200" },
+            { label: "Incomplete",          count: rows.filter(r => mapPlatformStatus(r.status, r.funded_amount) === "application_incomplete").length, badge: "Incomplete", value: "Application Incomplete", icon: Play,          color: "bg-indigo-50 text-indigo-600 border-indigo-200" },
+            { label: "No Offers",           count: rows.filter(r => mapPlatformStatus(r.status, r.funded_amount) === "no_offers_available").length, badge: "No Offers", value: "No Offers Available", icon: XCircle,       color: "bg-rose-50 text-rose-600 border-rose-200"   },
+            { label: "Error",               count: rows.filter(r => mapPlatformStatus(r.status, r.funded_amount) === "error").length,               badge: "Error",   value: "Error",                       icon: AlertTriangle, color: "bg-red-50 text-red-600 border-red-200"      },
+          ].map(({ label, count, badge, value, icon: Icon, color }) => (
+            <Card key={value} className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => setStatus(value)}>
+              <CardContent className="p-4">
+                <p className="text-sm text-muted-foreground mb-1">{label}</p>
+                <div className="flex items-end justify-between gap-2">
+                  <span className="text-3xl font-bold">{isLoading ? "—" : count}</span>
+                  <span
+                    className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full border ${color} ${status === value ? "ring-2 ring-offset-1 ring-current" : ""}`}
+                  >
+                    <Icon className="h-3 w-3" />
+                    {badge}
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {!sessionFilter && (
+        <Card>
+          <CardContent className="p-3 flex flex-wrap gap-2 items-center">
+            <Input placeholder="Search client, firm, email…" value={search} onChange={e => setSearch(e.target.value)} className="max-w-xs" />
+            <Select value={attorney} onValueChange={setAttorney}>
+              <SelectTrigger className="w-[220px]"><SelectValue placeholder="All attorneys" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All attorneys</SelectItem>
+                {attorneyOptions.map(a => (
+                  <SelectItem key={a} value={a}>{a}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <Table>
@@ -163,7 +192,7 @@ function ApplicationsPage() {
                   <TableCell>{r.firm_name ?? '—'}</TableCell>
                   <TableCell>{fmtMoney(r.loan_amount)}</TableCell>
                   <TableCell>
-                    <StatusBadge value={platformStatusLabel(r.status)} tone={applicationTone(crmStatus)} />
+                    <StatusBadge value={platformStatusLabel(r.status, r.funded_amount)} tone={applicationTone(crmStatus)} />
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">{r.attorney_name || r.attorney_email || '—'}</TableCell>
                   <TableCell className="text-sm">{fmtDate(r.updated_at)}</TableCell>

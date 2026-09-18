@@ -451,6 +451,10 @@ export type Database = {
           payment_setup_updated_at: string | null
           payment_status: Database["public"]["Enums"]["firm_payment_status"]
           phone: string | null
+          pipeline_status_entered_at: string
+          auto_follow_up_count: number
+          promised_follow_up_at: string | null
+          demo_scheduled_at: string | null
           practice_areas: string[] | null
           reconnect_date: string | null
           reconnect_notes: string | null
@@ -482,6 +486,10 @@ export type Database = {
           payment_setup_updated_at?: string | null
           payment_status?: Database["public"]["Enums"]["firm_payment_status"]
           phone?: string | null
+          pipeline_status_entered_at?: string
+          auto_follow_up_count?: number
+          promised_follow_up_at?: string | null
+          demo_scheduled_at?: string | null
           practice_areas?: string[] | null
           reconnect_date?: string | null
           reconnect_notes?: string | null
@@ -513,6 +521,10 @@ export type Database = {
           payment_setup_updated_at?: string | null
           payment_status?: Database["public"]["Enums"]["firm_payment_status"]
           phone?: string | null
+          pipeline_status_entered_at?: string
+          auto_follow_up_count?: number
+          promised_follow_up_at?: string | null
+          demo_scheduled_at?: string | null
           practice_areas?: string[] | null
           reconnect_date?: string | null
           reconnect_notes?: string | null
@@ -779,6 +791,173 @@ export type Database = {
           },
         ]
       }
+      follow_ups: {
+        Row: {
+          application_id: string | null
+          assigned_to: string | null
+          cancelled_at: string | null
+          completed_at: string | null
+          completed_by: string | null
+          created_at: string
+          due_at: string
+          firm_id: string | null
+          id: string
+          is_internal: boolean
+          kind: string
+          message: string
+          notification_id: string | null
+          pipeline_status: string
+          platform_session_id: string | null
+          sequence_index: number
+          skip_business_hours: boolean
+          source: string
+          status: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          application_id?: string | null
+          assigned_to?: string | null
+          cancelled_at?: string | null
+          completed_at?: string | null
+          completed_by?: string | null
+          created_at?: string
+          due_at: string
+          firm_id?: string | null
+          id?: string
+          is_internal?: boolean
+          kind: string
+          message?: string
+          notification_id?: string | null
+          pipeline_status: string
+          platform_session_id?: string | null
+          sequence_index?: number
+          skip_business_hours?: boolean
+          source?: string
+          status?: string
+          title?: string
+          updated_at?: string
+        }
+        Update: {
+          application_id?: string | null
+          assigned_to?: string | null
+          cancelled_at?: string | null
+          completed_at?: string | null
+          completed_by?: string | null
+          created_at?: string
+          due_at?: string
+          firm_id?: string | null
+          id?: string
+          is_internal?: boolean
+          kind?: string
+          message?: string
+          notification_id?: string | null
+          pipeline_status?: string
+          platform_session_id?: string | null
+          sequence_index?: number
+          skip_business_hours?: boolean
+          source?: string
+          status?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "follow_ups_firm_id_fkey"
+            columns: ["firm_id"]
+            isOneToOne: false
+            referencedRelation: "firms"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "follow_ups_platform_session_id_fkey"
+            columns: ["platform_session_id"]
+            isOneToOne: false
+            referencedRelation: "platform_applications"
+            referencedColumns: ["session_id"]
+          },
+        ]
+      }
+      platform_applications: {
+        Row: {
+          assigned_to: string | null
+          attorney_email: string | null
+          attorney_name: string | null
+          auto_follow_up_count: number
+          client_email: string | null
+          client_name: string
+          client_phone: string | null
+          created_at: string
+          escalated: boolean
+          firm_id: string | null
+          firm_name: string | null
+          funded_amount: number | null
+          last_activity_at: string
+          loan_amount: number | null
+          platform_url: string | null
+          raw_status: string | null
+          request_id: string | null
+          session_id: string
+          substatus: string
+          substatus_entered_at: string
+          updated_at: string
+        }
+        Insert: {
+          assigned_to?: string | null
+          attorney_email?: string | null
+          attorney_name?: string | null
+          auto_follow_up_count?: number
+          client_email?: string | null
+          client_name?: string
+          client_phone?: string | null
+          created_at?: string
+          escalated?: boolean
+          firm_id?: string | null
+          firm_name?: string | null
+          funded_amount?: number | null
+          last_activity_at?: string
+          loan_amount?: number | null
+          platform_url?: string | null
+          raw_status?: string | null
+          request_id?: string | null
+          session_id: string
+          substatus?: string
+          substatus_entered_at?: string
+          updated_at?: string
+        }
+        Update: {
+          assigned_to?: string | null
+          attorney_email?: string | null
+          attorney_name?: string | null
+          auto_follow_up_count?: number
+          client_email?: string | null
+          client_name?: string
+          client_phone?: string | null
+          created_at?: string
+          escalated?: boolean
+          firm_id?: string | null
+          firm_name?: string | null
+          funded_amount?: number | null
+          last_activity_at?: string
+          loan_amount?: number | null
+          platform_url?: string | null
+          raw_status?: string | null
+          request_id?: string | null
+          session_id?: string
+          substatus?: string
+          substatus_entered_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "platform_applications_firm_id_fkey"
+            columns: ["firm_id"]
+            isOneToOne: false
+            referencedRelation: "firms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notification_dismissals: {
         Row: {
           activity_log_id: string
@@ -803,9 +982,12 @@ export type Database = {
       notifications: {
         Row: {
           created_at: string
+          firm_id: string | null
+          follow_up_id: string | null
           id: string
           lead_id: string | null
           message: string
+          platform_session_id: string | null
           read: boolean
           title: string
           type: string
@@ -813,9 +995,12 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          firm_id?: string | null
+          follow_up_id?: string | null
           id?: string
           lead_id?: string | null
           message?: string
+          platform_session_id?: string | null
           read?: boolean
           title: string
           type?: string
@@ -823,9 +1008,12 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          firm_id?: string | null
+          follow_up_id?: string | null
           id?: string
           lead_id?: string | null
           message?: string
+          platform_session_id?: string | null
           read?: boolean
           title?: string
           type?: string
@@ -1109,6 +1297,31 @@ export type Database = {
     }
     Functions: {
       bump_firm_activity: { Args: { _firm_id: string }; Returns: undefined }
+      complete_follow_up: { Args: { _id: string }; Returns: undefined }
+      set_promised_follow_up: {
+        Args: { p_firm_id: string; p_at: string | null }
+        Returns: undefined
+      }
+      create_manual_follow_up: {
+        Args: {
+          p_kind: string
+          p_firm_id: string | null
+          p_session: string | null
+          p_due_at: string
+          p_title?: string | null
+          p_message?: string | null
+        }
+        Returns: string
+      }
+      process_due_follow_ups: { Args: { p_limit?: number }; Returns: number }
+      schedule_sales_follow_up: {
+        Args: { p_firm_id: string; p_force_reset?: boolean }
+        Returns: string
+      }
+      schedule_application_follow_up: {
+        Args: { p_session: string; p_force_reset?: boolean }
+        Returns: string
+      }
       firm_deletions_last_24h: { Args: { _user_id: string }; Returns: number }
       has_any_role: { Args: { _user_id: string }; Returns: boolean }
       has_role: {
@@ -1144,6 +1357,15 @@ export type Database = {
         | "paid_to_firm"
         | "issue_stuck"
         | "cancelled"
+        | "application_invite_sent"
+        | "application_incomplete"
+        | "no_offers_available"
+        | "offer_selection_needed"
+        | "client_declined_offers"
+        | "offer_processing"
+        | "funds_in_transit"
+        | "error"
+        | "application_withdrawn"
       destination_type:
         | "trust_account"
         | "operating_account"
@@ -1167,6 +1389,10 @@ export type Database = {
         | "onboarding_done"
         | "completed_first_application"
         | "funded_three_cases"
+        | "onboarding_submitted"
+        | "onboarding_approved"
+        | "first_case_funded"
+        | "three_cases_funded"
       firm_payment_status:
         | "not_started"
         | "onboarding_link_sent"
@@ -1423,6 +1649,15 @@ export const Constants = {
         "paid_to_firm",
         "issue_stuck",
         "cancelled",
+        "application_invite_sent",
+        "application_incomplete",
+        "no_offers_available",
+        "offer_selection_needed",
+        "client_declined_offers",
+        "offer_processing",
+        "funds_in_transit",
+        "error",
+        "application_withdrawn",
       ],
       destination_type: [
         "trust_account",
@@ -1449,6 +1684,10 @@ export const Constants = {
         "onboarding_done",
         "completed_first_application",
         "funded_three_cases",
+        "onboarding_submitted",
+        "onboarding_approved",
+        "first_case_funded",
+        "three_cases_funded",
       ],
       firm_payment_status: [
         "not_started",
