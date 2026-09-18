@@ -184,7 +184,7 @@ function SettingsPage() {
         (await supabase
           .from("activity_logs")
           .select("*, profiles(full_name, email)")
-          .in("action_type", ["lead_dismissed", "firm_archived", "firm_deleted"])
+          .in("action_type", ["lead_dismissed", "firm_archived", "firm_deleted", "lead_deleted", "follow_up_deleted"])
           .order("created_at", { ascending: false })
           .limit(100)).data,
       ),
@@ -446,12 +446,14 @@ function SettingsPage() {
                 <TableRow key={a.id}>
                   <TableCell className="text-sm">{fmtDateTime(a.created_at)}</TableCell>
                   <TableCell className="text-sm">{titleize(a.related_record_type)}</TableCell>
-                  <TableCell className="text-sm">{a.metadata?.lead_name || a.metadata?.firm_name || "—"}</TableCell>
+                  <TableCell className="text-sm">{a.metadata?.lead_name || a.metadata?.firm_name || a.metadata?.title || "—"}</TableCell>
                   <TableCell className="text-sm">{a.profiles?.full_name || a.profiles?.email || "—"}</TableCell>
                   <TableCell className="text-sm">
                     {a.action_type === "lead_dismissed" && "Dismissed"}
                     {a.action_type === "firm_archived" && "Archived"}
                     {a.action_type === "firm_deleted" && "Deleted"}
+                    {a.action_type === "lead_deleted" && "Deleted"}
+                    {a.action_type === "follow_up_deleted" && "Deleted"}
                   </TableCell>
                 </TableRow>
               ))}
