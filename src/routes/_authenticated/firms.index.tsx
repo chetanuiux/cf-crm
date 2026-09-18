@@ -10,10 +10,13 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel, SelectSeparator } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Trash2 } from "lucide-react";
 import { StatusBadge } from "@/components/StatusBadge";
 import { PaginationBar } from "@/components/PaginationBar";
+import { BulkDeleteBar } from "@/components/BulkDeleteBar";
 import { StateCombobox } from "@/components/StateCombobox";
+import { useRowSelection } from "@/hooks/use-row-selection";
 import { salesStatusTone, onboardingTone, fmtDate, fmtDateTime, statusLabel } from "@/lib/labels";
 import { SALES_FLOW, SALES_BRANCHES, ONBOARDING_FLOW } from "@/lib/pipeline-status";
 import { formatPhone } from "@/lib/format-phone";
@@ -39,7 +42,7 @@ export const Route = createFileRoute("/_authenticated/firms/")({
 function FirmsPage() {
   const navigate = Route.useNavigate();
   const qc = useQueryClient();
-  const { profile, canWrite } = useAuth();
+  const { profile, canWrite, isSuperAdmin } = useAuth();
   const { page, limit, status, q } = Route.useSearch();
 
   // Local input state so the field is responsive; debounce before hitting the URL
@@ -100,6 +103,17 @@ function FirmsPage() {
     qc.invalidateQueries({ queryKey: ["firms-page"] });
   };
 
+  const bulkDeleteFirms = async (ids: string[]) => {
+    const { error } = await supabase.from("firms").delete().in("id", ids);
+    if (error) {
+      toast.error(error.message || "Failed to delete firms");
+      throw error;
+    }
+    toast.success(`${ids.length} firm${ids.length === 1 ? "" : "s"} deleted`);
+    clear();
+    qc.invalidateQueries({ queryKey: ["firms-page"] });
+  };
+
   const { data, isLoading, isPlaceholderData, isError, refetch } = useQuery({
     queryKey: ["firms-page", page, limit, status, q],
     placeholderData: keepPreviousData,
@@ -145,7 +159,10 @@ function FirmsPage() {
   const totalPages = data?.totalPages ?? 1;
   const from = (page - 1) * limit + 1;
   const to = Math.min(page * limit, total);
-  const colSpan = 6;
+  const colSpan = 6 + (isSuperAdmin ? 1 : 0);
+
+  const firmIds = firms.map((f) => f.id as string);
+  const { selected, toggle, toggleAll, clear, allSelected, someSelected } = useRowSelection(firmIds);
 
   return (
     <div className="p-6 space-y-4 max-w-[1600px]">
@@ -203,10 +220,27 @@ function FirmsPage() {
         </CardContent>
       </Card>
 
+      {isSuperAdmin && (
+        <BulkDeleteBar
+          count={selected.size}
+          itemLabel="firm"
+          onConfirm={() => bulkDeleteFirms(Array.from(selected))}
+        />
+      )}
+
       <Card className={isPlaceholderData ? "opacity-60 pointer-events-none" : ""}>
         <Table>
           <TableHeader>
             <TableRow>
+              {isSuperAdmin && (
+                <TableHead className="w-10">
+                  <Checkbox
+                    checked={allSelected ? true : someSelected ? "indeterminate" : false}
+                    onCheckedChange={(v) => toggleAll(!!v)}
+                    aria-label="Select all firms on this page"
+                  />
+                </TableHead>
+              )}
               <TableHead>Firm</TableHead>
               <TableHead>Main contact</TableHead>
               <TableHead>Sales</TableHead>
@@ -240,6 +274,15 @@ function FirmsPage() {
             ) : (
               firms.map(f => (
                 <TableRow key={f.id} className="cursor-pointer hover:bg-muted/40" onClick={() => navigate({ to: "/firms/$firmId", params: { firmId: f.id } })}>
+                  {isSuperAdmin && (
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      <Checkbox
+                        checked={selected.has(f.id)}
+                        onCheckedChange={(v) => toggle(f.id, !!v)}
+                        aria-label={`Select firm ${f.name ?? f.id}`}
+                      />
+                    </TableCell>
+                  )}
                   <TableCell>
                     <div className="font-medium">{f.name}</div>
                     <div className="text-xs text-muted-foreground">{f.email}</div>

@@ -23,9 +23,12 @@ import {
 } from "@/components/ui/table";
 import { StatusBadge } from "@/components/StatusBadge";
 import { PaginationBar } from "@/components/PaginationBar";
+import { BulkDeleteBar } from "@/components/BulkDeleteBar";
+import { Checkbox } from "@/components/ui/checkbox";
 import { salesStatusTone, applicationTone, fmtDateTime } from "@/lib/labels";
 import { PAGE_SIZES, DEFAULT_PAGE_SIZE, type PageSize } from "@/lib/pagination";
 import { completeFollowUp } from "@/lib/follow-up-api";
+import { useRowSelection } from "@/hooks/use-row-selection";
 import { BellRing, Building, FileText } from "lucide-react";
 import { toast } from "sonner";
 
@@ -109,7 +112,7 @@ function dueLabel(row: DueRow) {
 }
 
 function FollowUpsDuePage() {
-  const { user, roles } = useAuth();
+  const { user, roles, isSuperAdmin } = useAuth();
   const qc = useQueryClient();
   const navigate = Route.useNavigate();
   const { page, limit, due, kind, rep, q } = Route.useSearch();
@@ -207,7 +210,22 @@ function FollowUpsDuePage() {
   const totalPages = data?.totalPages ?? 1;
   const from = (page - 1) * limit + 1;
   const to = Math.min(page * limit, total);
-  const colSpan = isLeadOrAdmin ? 7 : 6;
+  const colSpan = (isLeadOrAdmin ? 7 : 6) + (isSuperAdmin ? 1 : 0);
+
+  const followUpIds = rows.map((f) => f.id);
+  const { selected, toggle, toggleAll, clear, allSelected, someSelected } = useRowSelection(followUpIds);
+
+  const bulkDeleteFollowUps = async (ids: string[]) => {
+    const { error } = await supabase.from("follow_ups").delete().in("id", ids);
+    if (error) {
+      toast.error(error.message || "Failed to delete follow-ups");
+      throw error;
+    }
+    toast.success(`${ids.length} follow-up${ids.length === 1 ? "" : "s"} deleted`);
+    clear();
+    qc.invalidateQueries({ queryKey: ["follow-ups-due"] });
+    qc.invalidateQueries({ queryKey: ["follow-ups-due-count"] });
+  };
 
   const repName = (id: string | null) => {
     if (!id) return "Unassigned";
@@ -289,10 +307,27 @@ function FollowUpsDuePage() {
         </CardContent>
       </Card>
 
+      {isSuperAdmin && (
+        <BulkDeleteBar
+          count={selected.size}
+          itemLabel="follow-up"
+          onConfirm={() => bulkDeleteFollowUps(Array.from(selected))}
+        />
+      )}
+
       <Card className={isPlaceholderData ? "opacity-60 pointer-events-none" : ""}>
         <Table>
           <TableHeader>
             <TableRow>
+              {isSuperAdmin && (
+                <TableHead className="w-10">
+                  <Checkbox
+                    checked={allSelected ? true : someSelected ? "indeterminate" : false}
+                    onCheckedChange={(v) => toggleAll(!!v)}
+                    aria-label="Select all follow-ups on this page"
+                  />
+                </TableHead>
+              )}
               <TableHead>Record</TableHead>
               <TableHead>Type</TableHead>
               {isLeadOrAdmin && <TableHead>Assigned</TableHead>}
@@ -335,6 +370,15 @@ function FollowUpsDuePage() {
                     className="cursor-pointer hover:bg-muted/40"
                     onClick={() => openRow(f)}
                   >
+                    {isSuperAdmin && (
+                      <TableCell onClick={(e) => e.stopPropagation()}>
+                        <Checkbox
+                          checked={selected.has(f.id)}
+                          onCheckedChange={(v) => toggle(f.id, !!v)}
+                          aria-label={`Select follow-up ${f.title ?? f.id}`}
+                        />
+                      </TableCell>
+                    )}
                     <TableCell>
                       <div className="flex items-center gap-1.5 font-medium">
                         {f.kind === "sales" ? <Building className="h-3.5 w-3.5 text-muted-foreground" /> : <FileText className="h-3.5 w-3.5 text-muted-foreground" />}

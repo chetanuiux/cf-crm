@@ -23,11 +23,14 @@ import {
 } from "@/components/ui/table";
 import { StatusBadge } from "@/components/StatusBadge";
 import { PaginationBar } from "@/components/PaginationBar";
+import { BulkDeleteBar } from "@/components/BulkDeleteBar";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { formatPhone } from "@/lib/format-phone";
 import { fmtDateUTC, fmtTimeUTC, fmtLocalDateTime, formatLocation } from "@/lib/labels";
 import { Building, Mail, Phone, Trash2 } from "lucide-react";
 import { canConvertLead } from "@/lib/lead-permissions";
+import { useRowSelection } from "@/hooks/use-row-selection";
 import { applyDemoLeadFilters, excludeDemoRecords } from "@/lib/demo-data";
 import { PAGE_SIZES, DEFAULT_PAGE_SIZE, type PageSize } from "@/lib/pagination";
 import { Link } from "@tanstack/react-router";
@@ -93,7 +96,7 @@ function channelTone(ch: string) {
 }
 
 function LeadsPage() {
-  const { user, roles } = useAuth();
+  const { user, roles, isSuperAdmin } = useAuth();
   const showLeadActions = true;
   const qc = useQueryClient();
   const { page, limit, channel, status, q } = Route.useSearch();
@@ -174,7 +177,22 @@ function LeadsPage() {
   const totalPages = data?.totalPages ?? 1;
   const from = (page - 1) * limit + 1;
   const to = Math.min(page * limit, total);
-  const colSpan = showLeadActions ? 9 : 8;
+  const colSpan = (showLeadActions ? 9 : 8) + (isSuperAdmin ? 1 : 0);
+
+  const leadIds = rows.map((lead) => lead.id as string);
+  const { selected, toggle, toggleAll, clear, allSelected, someSelected } = useRowSelection(leadIds);
+
+  const bulkDeleteLeads = async (ids: string[]) => {
+    const { error } = await supabase.from("leads").delete().in("id", ids);
+    if (error) {
+      toast.error(error.message || "Failed to delete leads");
+      throw error;
+    }
+    toast.success(`${ids.length} lead${ids.length === 1 ? "" : "s"} deleted`);
+    clear();
+    qc.invalidateQueries({ queryKey: ["leads-page"] });
+    qc.invalidateQueries({ queryKey: ["new-leads-count"] });
+  };
 
   const convertToFirm = async (lead: Record<string, unknown>) => {
     const leadSourceMap: Record<string, "website" | "partner" | "linkedin" | "google_ads" | "other"> = {
@@ -275,11 +293,28 @@ function LeadsPage() {
         </CardContent>
       </Card>
 
+      {isSuperAdmin && (
+        <BulkDeleteBar
+          count={selected.size}
+          itemLabel="lead"
+          onConfirm={() => bulkDeleteLeads(Array.from(selected))}
+        />
+      )}
+
       {/* Table */}
       <Card className={isPlaceholderData ? "opacity-60 pointer-events-none" : ""}>
         <Table>
           <TableHeader>
             <TableRow>
+              {isSuperAdmin && (
+                <TableHead className="w-10">
+                  <Checkbox
+                    checked={allSelected ? true : someSelected ? "indeterminate" : false}
+                    onCheckedChange={(v) => toggleAll(!!v)}
+                    aria-label="Select all leads on this page"
+                  />
+                </TableHead>
+              )}
               <TableHead>Lawyer</TableHead>
               <TableHead>Client</TableHead>
               <TableHead>Firm</TableHead>
@@ -320,6 +355,15 @@ function LeadsPage() {
             ) : (
               rows.map((lead) => (
                 <TableRow key={lead.id}>
+                  {isSuperAdmin && (
+                    <TableCell>
+                      <Checkbox
+                        checked={selected.has(lead.id)}
+                        onCheckedChange={(v) => toggle(lead.id, !!v)}
+                        aria-label={`Select lead ${lead.name ?? lead.id}`}
+                      />
+                    </TableCell>
+                  )}
                   <TableCell>
                     <div className="font-medium">{lead.name}</div>
                     {lead.email && (
