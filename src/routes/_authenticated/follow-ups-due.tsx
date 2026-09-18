@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
@@ -23,18 +23,16 @@ import {
 } from "@/components/ui/table";
 import { StatusBadge } from "@/components/StatusBadge";
 import { PaginationBar } from "@/components/PaginationBar";
-import { salesStatusTone, fmtDate } from "@/lib/labels";
-import { formatPhone } from "@/lib/format-phone";
-import { excludeDemoRecords } from "@/lib/demo-data";
+import { salesStatusTone, applicationTone, fmtDateTime } from "@/lib/labels";
 import { PAGE_SIZES, DEFAULT_PAGE_SIZE, type PageSize } from "@/lib/pagination";
-import { BellRing, Building, Mail, Phone } from "lucide-react";
+import { completeFollowUp } from "@/lib/follow-up-api";
+import { BellRing, Building, FileText } from "lucide-react";
 import { toast } from "sonner";
-
-// Firms that are closed out don't need a follow-up nudge.
-const CLOSED_STATUSES = new Set(["signed_up", "lost_not_interested"]);
 
 const DUE_FILTERS = ["due", "overdue", "today", "upcoming", "all"] as const;
 type DueFilter = (typeof DUE_FILTERS)[number];
+const KIND_FILTERS = ["all", "sales", "application"] as const;
+type KindFilter = (typeof KIND_FILTERS)[number];
 
 function dueFilterLabel(f: DueFilter) {
   switch (f) {
@@ -58,49 +56,42 @@ export const Route = createFileRoute("/_authenticated/follow-ups-due")({
       ? (Number(raw.limit) as PageSize)
       : DEFAULT_PAGE_SIZE,
     due: (DUE_FILTERS as readonly string[]).includes(raw.due as string) ? (raw.due as DueFilter) : "due",
+    kind: (KIND_FILTERS as readonly string[]).includes(raw.kind as string) ? (raw.kind as KindFilter) : "all",
     rep: (raw.rep as string) || "all",
     q: (raw.q as string) || "",
   }),
 });
 
-type FirmRow = {
+type FollowUpRow = {
   id: string;
-  name: string;
-  main_contact_name: string | null;
-  email: string | null;
-  phone: string | null;
-  sales_status: string;
-  assigned_account_manager: string | null;
-  next_follow_up_date: string | null;
-  reconnect_date: string | null;
+  kind: "sales" | "application";
+  source: string;
+  status: string;
+  pipeline_status: string;
+  due_at: string;
+  is_internal: boolean;
+  title: string;
+  message: string;
+  firm_id: string | null;
+  platform_session_id: string | null;
+  assigned_to: string | null;
+  firms: { id: string; name: string } | null;
+  platform_applications: { session_id: string; client_name: string; firm_name: string | null } | null;
 };
 
 type DueBucket = "overdue" | "today" | "upcoming" | "later";
 
-type DueRow = FirmRow & {
-  dueDate: string;
-  dueKind: "Follow-up" | "Reconnect";
+type DueRow = FollowUpRow & {
   bucket: DueBucket;
   daysDiff: number;
 };
 
-// A firm can carry both a next_follow_up_date and a reconnect_date — surface
-// whichever comes first as "the" thing the rep needs to act on.
-function computeDueRows(firms: FirmRow[]): DueRow[] {
+function bucketFor(dueAt: string): { bucket: DueBucket; daysDiff: number } {
   const today = todayStr();
-  const rows: DueRow[] = [];
-  for (const f of firms) {
-    const candidates: { date: string; kind: "Follow-up" | "Reconnect" }[] = [];
-    if (f.next_follow_up_date) candidates.push({ date: f.next_follow_up_date, kind: "Follow-up" });
-    if (f.reconnect_date) candidates.push({ date: f.reconnect_date, kind: "Reconnect" });
-    if (!candidates.length) continue;
-    candidates.sort((a, b) => a.date.localeCompare(b.date));
-    const { date, kind } = candidates[0];
-    const daysDiff = Math.round((new Date(date).getTime() - new Date(today).getTime()) / 86_400_000);
-    const bucket: DueBucket = daysDiff < 0 ? "overdue" : daysDiff === 0 ? "today" : daysDiff <= 7 ? "upcoming" : "later";
-    rows.push({ ...f, dueDate: date, dueKind: kind, bucket, daysDiff });
-  }
-  return rows.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+  const date = dueAt.slice(0, 10);
+  const daysDiff = Math.round((new Date(date).getTime() - new Date(today).getTime()) / 86_400_000);
+  const bucket: DueBucket = daysDiff < 0 ? "overdue" : daysDiff === 0 ? "today" : daysDiff <= 7 ? "upcoming" : "later";
+  return { bucket, daysDiff };
 }
 
 function dueBadgeTone(bucket: DueBucket) {
@@ -119,13 +110,16 @@ function dueLabel(row: DueRow) {
 
 function FollowUpsDuePage() {
   const { user, roles } = useAuth();
+  const qc = useQueryClient();
   const navigate = Route.useNavigate();
-  const { page, limit, due, rep, q } = Route.useSearch();
+  const { page, limit, due, kind, rep, q } = Route.useSearch();
 
-  const isLeadOrAdmin = roles.some((r) => ["super_admin", "admin", "sales_team_lead"].includes(r));
+  const isLeadOrAdmin = roles.some((r) => ["super_admin", "admin", "sales_team_lead", "operations_team_lead"].includes(r));
+  const canSeeApps = roles.some((r) => ["super_admin", "admin", "operations", "operations_team_lead"].includes(r));
+  const canSeeSales = roles.some((r) => ["super_admin", "admin", "sales", "sales_team_lead"].includes(r));
 
-  // Local input state so the field is responsive; debounce before hitting the URL
   const [searchInput, setSearchInput] = useState(q);
+  const [completingId, setCompletingId] = useState<string | null>(null);
   const didMount = useRef(false);
   useEffect(() => {
     if (!didMount.current) {
@@ -140,6 +134,7 @@ function FollowUpsDuePage() {
   useEffect(() => { setSearchInput(q); }, [q]);
 
   const setDue = (val: string) => navigate({ search: (prev) => ({ ...prev, due: val as DueFilter, page: 1 }) });
+  const setKind = (val: string) => navigate({ search: (prev) => ({ ...prev, kind: val as KindFilter, page: 1 }) });
   const setRep = (val: string) => navigate({ search: (prev) => ({ ...prev, rep: val, page: 1 }) });
   const setLimit = (val: string) => navigate({ search: (prev) => ({ ...prev, limit: Number(val) as PageSize, page: 1 }) });
   const goTo = (p: number) => navigate({ search: (prev) => ({ ...prev, page: p }) });
@@ -148,7 +143,7 @@ function FollowUpsDuePage() {
     queryKey: ["sales-reps-follow-ups"],
     enabled: isLeadOrAdmin,
     queryFn: async () => {
-      const { data: ur } = await supabase.from("user_roles").select("user_id").in("role", ["sales", "sales_team_lead"]);
+      const { data: ur } = await supabase.from("user_roles").select("user_id").in("role", ["sales", "sales_team_lead", "operations", "operations_team_lead"]);
       const ids = Array.from(new Set((ur ?? []).map((r) => r.user_id)));
       if (!ids.length) return [];
       const { data: profs } = await supabase.from("profiles").select("id,full_name,email").in("id", ids);
@@ -157,39 +152,41 @@ function FollowUpsDuePage() {
   });
 
   const { data, isLoading, isPlaceholderData, isError, refetch } = useQuery({
-    queryKey: ["follow-ups-due", user?.id, isLeadOrAdmin, due, rep, q],
+    queryKey: ["follow-ups-due", user?.id, isLeadOrAdmin, due, kind, rep, q],
     placeholderData: keepPreviousData,
     enabled: !!user,
     queryFn: async () => {
-      // NOTE: this reads firms.next_follow_up_date / reconnect_date directly.
-      // Shiv is wiring the backend rules that keep those dates (and a real
-      // "follow_up_due" notifications row) up to date — this page will pick
-      // those changes up automatically once that lands.
       let query = supabase
-        .from("firms")
-        .select("id,name,main_contact_name,email,phone,sales_status,assigned_account_manager,next_follow_up_date,reconnect_date")
-        .eq("archived", false);
+        .from("follow_ups")
+        .select("id,kind,source,status,pipeline_status,due_at,is_internal,title,message,firm_id,platform_session_id,assigned_to,firms(id,name),platform_applications(session_id,client_name,firm_name)")
+        .in("status", ["pending", "notified"])
+        .order("due_at", { ascending: true });
 
-      if (isLeadOrAdmin) {
-        if (rep !== "all") query = query.eq("assigned_account_manager", rep);
-      } else {
-        query = query.eq("assigned_account_manager", user!.id);
-      }
+      if (!isLeadOrAdmin) query = query.eq("assigned_to", user!.id);
+      else if (rep !== "all") query = query.eq("assigned_to", rep);
+
+      if (kind !== "all") query = query.eq("kind", kind);
+      else if (!canSeeApps && canSeeSales) query = query.eq("kind", "sales");
+      else if (canSeeApps && !canSeeSales) query = query.eq("kind", "application");
 
       const { data: rows, error } = await query;
       if (error) throw error;
 
-      const open = excludeDemoRecords(rows).filter((f) => !CLOSED_STATUSES.has(f.sales_status));
-      let dueRows = computeDueRows(open as FirmRow[]);
+      let dueRows: DueRow[] = ((rows ?? []) as unknown as FollowUpRow[]).map((r) => {
+        const { bucket, daysDiff } = bucketFor(r.due_at);
+        return { ...r, bucket, daysDiff };
+      });
 
       if (due !== "all") {
         dueRows = dueRows.filter((r) => (due === "due" ? r.bucket === "overdue" || r.bucket === "today" : r.bucket === due));
       }
       if (q.trim()) {
         const safe = q.trim().toLowerCase();
-        dueRows = dueRows.filter(
-          (r) => r.name.toLowerCase().includes(safe) || (r.main_contact_name ?? "").toLowerCase().includes(safe),
-        );
+        dueRows = dueRows.filter((r) => {
+          const firm = r.firms?.name ?? "";
+          const client = r.platform_applications?.client_name ?? "";
+          return firm.toLowerCase().includes(safe) || client.toLowerCase().includes(safe) || r.title.toLowerCase().includes(safe);
+        });
       }
 
       const total = dueRows.length;
@@ -210,7 +207,7 @@ function FollowUpsDuePage() {
   const totalPages = data?.totalPages ?? 1;
   const from = (page - 1) * limit + 1;
   const to = Math.min(page * limit, total);
-  const colSpan = isLeadOrAdmin ? 6 : 5;
+  const colSpan = isLeadOrAdmin ? 7 : 6;
 
   const repName = (id: string | null) => {
     if (!id) return "Unassigned";
@@ -218,18 +215,27 @@ function FollowUpsDuePage() {
     return p?.full_name || p?.email || "—";
   };
 
-  const previewFirm = rows[0];
-  const previewNotification = () => {
-    if (previewFirm) {
-      toast.info(`Follow-up due: ${previewFirm.name}`, {
-        description: dueLabel(previewFirm),
-        action: {
-          label: "View firm",
-          onClick: () => navigate({ to: "/firms/$firmId", params: { firmId: previewFirm.id } }),
-        },
-      });
+  const openRow = (f: DueRow) => {
+    if (f.kind === "sales" && f.firm_id) {
+      navigate({ to: "/firms/$firmId", params: { firmId: f.firm_id } });
+    } else if (f.kind === "application" && f.platform_session_id) {
+      navigate({ to: "/applications", search: { session: f.platform_session_id } });
     } else {
-      toast.info("Follow-up due: Smith & Associates", { description: "3d overdue" });
+      navigate({ to: "/applications" });
+    }
+  };
+
+  const onComplete = async (id: string) => {
+    setCompletingId(id);
+    try {
+      await completeFollowUp(id);
+      toast.success("Follow-up completed. Next cadence item scheduled if the status is unchanged.");
+      qc.invalidateQueries({ queryKey: ["follow-ups-due"] });
+      qc.invalidateQueries({ queryKey: ["follow-ups-due-count"] });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not complete follow-up");
+    } finally {
+      setCompletingId(null);
     }
   };
 
@@ -241,35 +247,14 @@ function FollowUpsDuePage() {
           Follow Ups Due
         </h1>
         <p className="text-sm text-muted-foreground">
-          Law firms the sales team needs to follow up with, based on each firm's next follow-up / reconnect date.
+          Automatic and manual follow-ups for attorney sales and client applications. Completing one schedules the next using that status’s cadence, unless you set a specific date.
         </p>
       </div>
 
-      {/* Notification preview — a mockup so the team can see the target look before Shiv wires the real trigger. */}
-      <Card className="border-dashed">
-        <CardContent className="p-3 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-start gap-2.5">
-            <span className="mt-1.5 h-2 w-2 rounded-full bg-primary shrink-0" />
-            <div>
-              <p className="text-xs font-medium">
-                Follow-up due: {previewFirm?.name ?? "Smith & Associates"}
-              </p>
-              <p className="text-[11px] text-muted-foreground mt-0.5">
-                {previewFirm ? dueLabel(previewFirm) : "3d overdue"} - this is how it will appear in the notification bell
-              </p>
-            </div>
-          </div>
-          <Button size="sm" variant="outline" onClick={previewNotification}>
-            Preview toast
-          </Button>
-        </CardContent>
-      </Card>
-
-      {/* Filters */}
       <Card>
         <CardContent className="p-3 flex flex-wrap gap-2 items-center">
           <Input
-            placeholder="Search firm or contact…"
+            placeholder="Search firm or client…"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             className="max-w-xs"
@@ -282,11 +267,19 @@ function FollowUpsDuePage() {
               ))}
             </SelectContent>
           </Select>
+          <Select value={kind} onValueChange={setKind}>
+            <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All types</SelectItem>
+              <SelectItem value="sales">Attorney sales</SelectItem>
+              <SelectItem value="application">Applications</SelectItem>
+            </SelectContent>
+          </Select>
           {isLeadOrAdmin && (
             <Select value={rep} onValueChange={setRep}>
               <SelectTrigger className="w-[200px]"><SelectValue placeholder="All reps" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All reps</SelectItem>
+                <SelectItem value="all">All assignees</SelectItem>
                 {salesReps.map((r) => (
                   <SelectItem key={r.id} value={r.id}>{r.full_name || r.email}</SelectItem>
                 ))}
@@ -296,15 +289,14 @@ function FollowUpsDuePage() {
         </CardContent>
       </Card>
 
-      {/* Table */}
       <Card className={isPlaceholderData ? "opacity-60 pointer-events-none" : ""}>
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Firm</TableHead>
-              <TableHead>Contact</TableHead>
-              {isLeadOrAdmin && <TableHead>Assigned rep</TableHead>}
-              <TableHead>Sales status</TableHead>
+              <TableHead>Record</TableHead>
+              <TableHead>Type</TableHead>
+              {isLeadOrAdmin && <TableHead>Assigned</TableHead>}
+              <TableHead>Status</TableHead>
               <TableHead>Due</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
@@ -328,48 +320,54 @@ function FollowUpsDuePage() {
             ) : rows.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={colSpan} className="text-muted-foreground py-8 text-center">
-                  Nothing due - you're all caught up.
+                  Nothing due — you're all caught up.
                 </TableCell>
               </TableRow>
             ) : (
-              rows.map((f) => (
-                <TableRow
-                  key={f.id}
-                  className="cursor-pointer hover:bg-muted/40"
-                  onClick={() => navigate({ to: "/firms/$firmId", params: { firmId: f.id } })}
-                >
-                  <TableCell>
-                    <div className="flex items-center gap-1.5 font-medium">
-                      <Building className="h-3.5 w-3.5 text-muted-foreground" />
-                      {f.name}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="text-sm">{f.main_contact_name || "—"}</div>
-                    {f.email && (
-                      <div className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
-                        <Mail className="h-3 w-3" />{f.email}
+              rows.map((f) => {
+                const name = f.kind === "sales"
+                  ? (f.firms?.name ?? "Firm")
+                  : (f.platform_applications?.client_name ?? "Application");
+                const sub = f.kind === "application" ? f.platform_applications?.firm_name : null;
+                return (
+                  <TableRow
+                    key={f.id}
+                    className="cursor-pointer hover:bg-muted/40"
+                    onClick={() => openRow(f)}
+                  >
+                    <TableCell>
+                      <div className="flex items-center gap-1.5 font-medium">
+                        {f.kind === "sales" ? <Building className="h-3.5 w-3.5 text-muted-foreground" /> : <FileText className="h-3.5 w-3.5 text-muted-foreground" />}
+                        {name}
                       </div>
-                    )}
-                    {f.phone && (
-                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                        <Phone className="h-3 w-3" />{formatPhone(f.phone)}
+                      {sub && <div className="text-xs text-muted-foreground mt-0.5">{sub}</div>}
+                      {f.is_internal && <div className="text-[11px] text-muted-foreground mt-0.5">Internal review — contact the firm only if they need to act</div>}
+                    </TableCell>
+                    <TableCell className="text-sm">{f.kind === "sales" ? "Sales" : "Application"}{f.source === "manual" ? " · Manual" : ""}</TableCell>
+                    {isLeadOrAdmin && <TableCell className="text-sm">{repName(f.assigned_to)}</TableCell>}
+                    <TableCell>
+                      <StatusBadge
+                        value={f.pipeline_status}
+                        tone={f.kind === "sales" ? salesStatusTone(f.pipeline_status) : applicationTone(f.pipeline_status)}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <StatusBadge value={dueLabel(f)} tone={dueBadgeTone(f.bucket)} />
+                      <div className="text-xs text-muted-foreground mt-1">{fmtDateTime(f.due_at)}</div>
+                    </TableCell>
+                    <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex justify-end gap-2">
+                        <Button size="sm" variant="outline" onClick={() => openRow(f)}>
+                          View
+                        </Button>
+                        <Button size="sm" disabled={completingId === f.id} onClick={() => onComplete(f.id)}>
+                          {completingId === f.id ? "Saving…" : "Complete"}
+                        </Button>
                       </div>
-                    )}
-                  </TableCell>
-                  {isLeadOrAdmin && <TableCell className="text-sm">{repName(f.assigned_account_manager)}</TableCell>}
-                  <TableCell><StatusBadge value={f.sales_status} tone={salesStatusTone(f.sales_status)} /></TableCell>
-                  <TableCell>
-                    <StatusBadge value={dueLabel(f)} tone={dueBadgeTone(f.bucket)} />
-                    <div className="text-xs text-muted-foreground mt-1">{f.dueKind} • {fmtDate(f.dueDate)}</div>
-                  </TableCell>
-                  <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                    <Button size="sm" variant="outline" onClick={() => navigate({ to: "/firms/$firmId", params: { firmId: f.id } })}>
-                      View firm
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))
+                    </TableCell>
+                  </TableRow>
+                );
+              })
             )}
           </TableBody>
         </Table>
@@ -383,7 +381,7 @@ function FollowUpsDuePage() {
           from={from}
           to={to}
           limit={limit}
-          entityLabel="firms"
+          entityLabel="follow-ups"
           onPageChange={goTo}
           onLimitChange={(l) => setLimit(String(l))}
         />

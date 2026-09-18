@@ -45,7 +45,9 @@ function CollapsibleFlow({ title, steps, locked, lockedMessage, defaultOpen }: {
     </div>
   );
 }
-import { salesStatusTone, onboardingTone, paymentSetupTone, applicationTone, paymentTone, taskTone, fmtDate, fmtDateTime, fmtMoney, titleize, ROLE_LABEL, formatLocation } from "@/lib/labels";
+import { salesStatusTone, onboardingTone, paymentSetupTone, applicationTone, paymentTone, taskTone, fmtDate, fmtDateTime, fmtMoney, titleize, statusLabel, ROLE_LABEL, formatLocation } from "@/lib/labels";
+import { SALES_FLOW, SALES_OPTIONS, SALES_COMPLETE, ONBOARDING_FLOW } from "@/lib/pipeline-status";
+import { setPromisedFollowUp } from "@/lib/follow-up-api";
 import { DEFAULT_PAGE_SIZE } from "@/lib/pagination";
 import { toast } from "sonner";
 
@@ -58,39 +60,118 @@ function Field({ label, value, full }: { label: string; value: React.ReactNode; 
   );
 }
 
-// Sales flow runs first; onboarding flow only begins once attorney has signed up.
-const SALES_FLOW = ["new_lead","contacted","demo_booked","demo_completed","demo_completed_signed_up"] as const;
-const SALES_BRANCHES = ["demo_no_show","demo_completed_didnt_sign_up","lost_not_interested","dnc"] as const;
-const SALES_OPTIONS = [...SALES_FLOW, ...SALES_BRANCHES] as const;
-const ONBOARDING_FLOW = ["signup_submitted","bank_account_connected","onboarding_done","completed_first_application","funded_three_cases"] as const;
-const SALES_COMPLETE = "demo_completed_signed_up";
-const SALES_TERMINAL_LOST = ["lost_not_interested","dnc","demo_completed_didnt_sign_up"];
+function PromisedFollowUpField({ firmId, date, canWrite, onSaved }: {
+  firmId: string;
+  date: string | null;
+  canWrite: boolean;
+  onSaved: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(date ?? "");
+  const [saving, setSaving] = useState(false);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await setPromisedFollowUp(firmId, draft ? new Date(`${draft}T08:00:00`).toISOString() : null);
+      toast.success("Follow-up date saved — this date takes priority over the automatic cadence");
+      setEditing(false);
+      onSaved();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not save follow-up date");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div>
+      <div className="text-xs text-muted-foreground">Next follow-up</div>
+      {editing ? (
+        <div className="mt-0.5 flex items-center gap-1">
+          <Input type="date" className="h-8" value={draft} onChange={e => setDraft(e.target.value)} />
+          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={save} disabled={saving}><Check className="h-3.5 w-3.5" /></Button>
+          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => { setDraft(date ?? ""); setEditing(false); }}><X className="h-3.5 w-3.5" /></Button>
+        </div>
+      ) : (
+        <button type="button" className="mt-0.5 text-left" disabled={!canWrite} onClick={() => { setDraft(date ?? ""); setEditing(true); }}>
+          {fmtDate(date)}
+          {canWrite && <span className="ml-1 text-[10px] text-muted-foreground">edit</span>}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function DemoScheduledField({ firmId, value, canWrite, visible, onSaved }: {
+  firmId: string;
+  value: string | null;
+  canWrite: boolean;
+  visible: boolean;
+  onSaved: () => void;
+}) {
+  const [draft, setDraft] = useState(value ? value.slice(0, 16) : "");
+  const [saving, setSaving] = useState(false);
+  if (!visible) return null;
+
+  const save = async () => {
+    setSaving(true);
+    const iso = draft ? new Date(draft).toISOString() : null;
+    const { error } = await supabase.from("firms").update({ demo_scheduled_at: iso } as any).eq("id", firmId);
+    setSaving(false);
+    if (error) return toast.error(error.message);
+    toast.success("Demo time saved");
+    onSaved();
+  };
+
+  return (
+    <div className="col-span-full">
+      <div className="text-xs text-muted-foreground">Scheduled demo</div>
+      <div className="mt-0.5 flex items-center gap-2">
+        <Input
+          type="datetime-local"
+          className="h-8 max-w-xs"
+          value={draft}
+          disabled={!canWrite}
+          onChange={e => setDraft(e.target.value)}
+        />
+        {canWrite && <Button size="sm" variant="outline" onClick={save} disabled={saving}>{saving ? "Saving…" : "Save"}</Button>}
+      </div>
+    </div>
+  );
+}
+
+const SALES_TERMINAL_LOST = ["lost_not_interested", "dnc"];
 
 function buildSalesSteps(current: string): Step[] {
-  // demo_no_show is a warning state attached to demo_booked; otherwise follow main flow.
   if (SALES_TERMINAL_LOST.includes(current)) {
     return SALES_FLOW.map((k, i) => ({
-      key: k, label: titleize(k),
+      key: k, label: statusLabel(k),
       state: (i === 0 ? "complete" : i === SALES_FLOW.length - 1 ? "failed" : "upcoming") as StepState,
-      sublabel: i === SALES_FLOW.length - 1 ? titleize(current) : undefined,
+      sublabel: i === SALES_FLOW.length - 1 ? statusLabel(current) : undefined,
     }));
   }
-  const effective = current === "demo_no_show" ? "demo_booked" : current;
+  const effective = current === "demo_no_show" ? "demo_booked" : current === "demo_completed_signed_up" ? "signed_up" : current;
   const idx = SALES_FLOW.indexOf(effective as any);
   return SALES_FLOW.map((k, i) => {
     let state: StepState = i < idx ? "complete" : i === idx ? "current" : "upcoming";
     if (k === "demo_booked" && current === "demo_no_show") state = "warning";
     if (i < idx && k !== "demo_booked") state = "complete";
     if (i === SALES_FLOW.length - 1 && current === SALES_COMPLETE) state = "complete";
-    return { key: k, label: titleize(k), state, sublabel: k === "demo_booked" && current === "demo_no_show" ? "No-show — follow up" : undefined };
+    return { key: k, label: statusLabel(k), state, sublabel: k === "demo_booked" && current === "demo_no_show" ? "No-show — follow up" : undefined };
   });
 }
 function buildOnboardingSteps(current: string, locked: boolean): Step[] {
-  const idx = ONBOARDING_FLOW.indexOf(current as any);
+  const mapped = current === "signup_submitted" || current === "bank_account_connected" ? "onboarding_submitted"
+    : current === "onboarding_done" || current === "ready_for_first_application" || current === "complete" ? "onboarding_approved"
+    : current === "completed_first_application" ? "first_case_funded"
+    : current === "funded_three_cases" ? "three_cases_funded"
+    : current;
+  const idx = ONBOARDING_FLOW.indexOf(mapped as (typeof ONBOARDING_FLOW)[number]);
   return ONBOARDING_FLOW.map((k, i) => {
     let state: StepState = locked ? "locked" : i < idx ? "complete" : i === idx ? "current" : "upcoming";
-    if (!locked && i === ONBOARDING_FLOW.length - 1 && current === "funded_three_cases") state = "complete";
-    return { key: k, label: titleize(k), state };
+    if (!locked && i === ONBOARDING_FLOW.length - 1 && current === "three_cases_funded") state = "complete";
+    return { key: k, label: statusLabel(k), state };
   });
 }
 
@@ -321,7 +402,7 @@ function FirmDetail() {
         <CardContent className="p-5 space-y-3">
           <CollapsibleFlow title="Sales Flow" steps={salesSteps} defaultOpen={!onboardingLocked ? false : true} />
           <div className="border-t" />
-          <CollapsibleFlow title="Onboarding Flow" steps={onboardingSteps} locked={onboardingLocked} lockedMessage="Unlocks after Demo Completed — Signed Up" defaultOpen={!onboardingLocked} />
+          <CollapsibleFlow title="Onboarding Flow" steps={onboardingSteps} locked={onboardingLocked} lockedMessage="Unlocks after Signed Up" defaultOpen={!onboardingLocked} />
         </CardContent>
       </Card>
 
@@ -360,8 +441,20 @@ function FirmDetail() {
                   <Field label="Created" value={fmtDate(firm.created_at)} />
                   <Field label="Last updated" value={fmtDateTime(firm.updated_at)} />
                   <Field label="Last activity" value={fmtDateTime(firm.last_activity_date)} />
-                  <Field label="Next follow-up" value={fmtDate(firm.next_follow_up_date)} />
+                  <PromisedFollowUpField
+                    firmId={firmId}
+                    date={firm.next_follow_up_date}
+                    canWrite={canWrite}
+                    onSaved={() => qc.invalidateQueries({ queryKey: ["firm", firmId] })}
+                  />
                   <Field label="Reconnect date" value={fmtDate(firm.reconnect_date)} />
+                  <DemoScheduledField
+                    firmId={firmId}
+                    value={(firm as { demo_scheduled_at?: string | null }).demo_scheduled_at ?? null}
+                    canWrite={canWrite}
+                    visible={firm.sales_status === "demo_booked" || firm.sales_status === "demo_no_show"}
+                    onSaved={() => qc.invalidateQueries({ queryKey: ["firm", firmId] })}
+                  />
                   <Field label="Lost reason" value={firm.lost_reason} full />
                   <Field label="Reconnect notes" value={firm.reconnect_notes} full />
                 </div>
@@ -414,8 +507,12 @@ function FirmDetail() {
                     <Select disabled={!canWrite || isLocked} value={firm[f]} onValueChange={v => updateStatus(f, v)}>
                       <SelectTrigger className="flex-1"><SelectValue placeholder={isLocked ? "Locked until sales complete" : undefined} /></SelectTrigger>
                       <SelectContent>
-                        {(f === "sales_status" ? SALES_OPTIONS as readonly string[] : ONBOARDING_FLOW as readonly string[]
-                        ).map(o => <SelectItem key={o} value={o}>{titleize(o)}</SelectItem>)}
+                        {(f === "sales_status"
+                          ? (SALES_OPTIONS as readonly string[])
+                          : (ONBOARDING_FLOW as readonly string[]).includes(firm.onboarding_status)
+                            ? (ONBOARDING_FLOW as readonly string[])
+                            : [firm.onboarding_status, ...(ONBOARDING_FLOW as readonly string[])]
+                        ).map(o => <SelectItem key={o} value={o}>{statusLabel(o)}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </div>

@@ -2,7 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1';
 import { corsHeaders, jsonResponse } from '../_shared/cors.ts';
 import { fetchPlatformApplications, resolveLivePlatformApiUrl } from '../_shared/platform-api.ts';
 
-const APPLICATIONS_VIEW_ROLES = ['super_admin', 'admin', 'operations'];
+const APPLICATIONS_VIEW_ROLES = ['super_admin', 'admin', 'operations', 'operations_team_lead'];
 
 /** Proxy: CRM → casefunders.com/api/crm/applications/ (token stays server-side). */
 Deno.serve(async (req) => {

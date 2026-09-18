@@ -12,6 +12,7 @@
     "format": "prettier --write .",
     "migrate:calendar": "node --env-file=.env.development scripts/run-calendar-migration.mjs",
     "migrate:all": "node --env-file=.env.development scripts/run-all-migrations.mjs",
+    "migrate:follow-ups": "node --env-file=.env.development scripts/run-follow-up-migrations.mjs",
     "seed": "echo Demo seed is disabled. Use remove-demo-data to clean existing rows.",
     "remove-demo-data": "node --env-file=.env.development scripts/remove-demo-data.mjs",
     "clean-leads-firms": "node --env-file=.env scripts/clean-leads-firms.mjs"

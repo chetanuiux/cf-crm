@@ -35,7 +35,7 @@ function ReportsPage() {
         tasksCompleted: t.filter(x=>x.status==="completed").length,
         tasksOverdue: t.filter(x=>x.status==="overdue").length,
         firmsSignedUp: f.filter(x=>x.sales_status==="signed_up").length,
-        readyFirstApp: f.filter(x=>x.onboarding_status==="ready_for_first_application").length,
+        readyFirstApp: f.filter(x=>x.onboarding_status==="onboarding_approved" || x.onboarding_status==="ready_for_first_application").length,
         paySetupPending: f.filter(x=>!["verified_ready","disabled"].includes(x.payment_status)).length,
       };
     },
