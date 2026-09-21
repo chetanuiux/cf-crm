@@ -89,6 +89,7 @@ Deno.serve(async (req) => {
             firm_name: app.firm_name,
             attorney_email: app.attorney_email,
             attorney_name: app.attorney_name,
+            started_by: app.started_by,
             loan_amount: app.loan_amount,
             funded_amount: app.funded_amount,
             raw_status: app.status,

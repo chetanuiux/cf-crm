@@ -41,6 +41,7 @@ const files = [
   '20260917000000_pipeline_enum_values.sql',
   '20260917000001_follow_up_engine.sql',
   '20260917000002_follow_up_cron.sql',
+  '20260921000000_platform_apps_started_by.sql',
 ];
 
 const migrationsDir = join(dirname(fileURLToPath(import.meta.url)), '../supabase/migrations');
