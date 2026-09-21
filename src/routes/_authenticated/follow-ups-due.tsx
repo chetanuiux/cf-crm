@@ -9,7 +9,10 @@ import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -25,9 +28,11 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { PaginationBar } from "@/components/PaginationBar";
 import { BulkDeleteBar } from "@/components/BulkDeleteBar";
 import { Checkbox } from "@/components/ui/checkbox";
-import { salesStatusTone, applicationTone, fmtDateTime } from "@/lib/labels";
+import { salesStatusTone, applicationTone, fmtDateTime, statusLabel } from "@/lib/labels";
 import { PAGE_SIZES, DEFAULT_PAGE_SIZE, type PageSize } from "@/lib/pagination";
 import { completeFollowUp } from "@/lib/follow-up-api";
+import { matchesSearch } from "@/lib/search-match";
+import { SALES_OPTIONS, ONBOARDING_FLOW, APPLICATION_SUBSTATUSES } from "@/lib/pipeline-status";
 import { useRowSelection } from "@/hooks/use-row-selection";
 import { BellRing, Building, FileText } from "lucide-react";
 import { toast } from "sonner";
@@ -36,6 +41,7 @@ const DUE_FILTERS = ["due", "overdue", "today", "upcoming", "all"] as const;
 type DueFilter = (typeof DUE_FILTERS)[number];
 const KIND_FILTERS = ["all", "sales", "application"] as const;
 type KindFilter = (typeof KIND_FILTERS)[number];
+const PIPELINE_STATUSES = [...SALES_OPTIONS, ...ONBOARDING_FLOW, ...APPLICATION_SUBSTATUSES] as const;
 
 function dueFilterLabel(f: DueFilter) {
   switch (f) {
@@ -61,6 +67,9 @@ export const Route = createFileRoute("/_authenticated/follow-ups-due")({
     due: (DUE_FILTERS as readonly string[]).includes(raw.due as string) ? (raw.due as DueFilter) : "due",
     kind: (KIND_FILTERS as readonly string[]).includes(raw.kind as string) ? (raw.kind as KindFilter) : "all",
     rep: (raw.rep as string) || "all",
+    pipelineStatus: (PIPELINE_STATUSES as readonly string[]).includes(raw.pipelineStatus as string)
+      ? (raw.pipelineStatus as string)
+      : "all",
     q: (raw.q as string) || "",
   }),
 });
@@ -115,7 +124,7 @@ function FollowUpsDuePage() {
   const { user, roles, isSuperAdmin } = useAuth();
   const qc = useQueryClient();
   const navigate = Route.useNavigate();
-  const { page, limit, due, kind, rep, q } = Route.useSearch();
+  const { page, limit, due, kind, rep, pipelineStatus, q } = Route.useSearch();
 
   const isLeadOrAdmin = roles.some((r) => ["super_admin", "admin", "sales_team_lead", "operations_team_lead"].includes(r));
   const canSeeApps = roles.some((r) => ["super_admin", "admin", "operations", "operations_team_lead"].includes(r));
@@ -139,6 +148,7 @@ function FollowUpsDuePage() {
   const setDue = (val: string) => navigate({ search: (prev) => ({ ...prev, due: val as DueFilter, page: 1 }) });
   const setKind = (val: string) => navigate({ search: (prev) => ({ ...prev, kind: val as KindFilter, page: 1 }) });
   const setRep = (val: string) => navigate({ search: (prev) => ({ ...prev, rep: val, page: 1 }) });
+  const setPipelineStatus = (val: string) => navigate({ search: (prev) => ({ ...prev, pipelineStatus: val, page: 1 }) });
   const setLimit = (val: string) => navigate({ search: (prev) => ({ ...prev, limit: Number(val) as PageSize, page: 1 }) });
   const goTo = (p: number) => navigate({ search: (prev) => ({ ...prev, page: p }) });
 
@@ -155,7 +165,7 @@ function FollowUpsDuePage() {
   });
 
   const { data, isLoading, isPlaceholderData, isError, refetch } = useQuery({
-    queryKey: ["follow-ups-due", user?.id, isLeadOrAdmin, due, kind, rep, q],
+    queryKey: ["follow-ups-due", user?.id, isLeadOrAdmin, due, kind, rep, pipelineStatus, q, page, limit],
     placeholderData: keepPreviousData,
     enabled: !!user,
     queryFn: async () => {
@@ -163,7 +173,7 @@ function FollowUpsDuePage() {
         .from("follow_ups")
         .select("id,kind,source,status,pipeline_status,due_at,is_internal,title,message,firm_id,platform_session_id,assigned_to,firms(id,name),platform_applications(session_id,client_name,firm_name)")
         .in("status", ["pending", "notified"])
-        .order("due_at", { ascending: true });
+        .order("due_at", { ascending: false });
 
       if (!isLeadOrAdmin) query = query.eq("assigned_to", user!.id);
       else if (rep !== "all") query = query.eq("assigned_to", rep);
@@ -171,6 +181,8 @@ function FollowUpsDuePage() {
       if (kind !== "all") query = query.eq("kind", kind);
       else if (!canSeeApps && canSeeSales) query = query.eq("kind", "sales");
       else if (canSeeApps && !canSeeSales) query = query.eq("kind", "application");
+
+      if (pipelineStatus !== "all") query = query.eq("pipeline_status", pipelineStatus);
 
       const { data: rows, error } = await query;
       if (error) throw error;
@@ -184,12 +196,9 @@ function FollowUpsDuePage() {
         dueRows = dueRows.filter((r) => (due === "due" ? r.bucket === "overdue" || r.bucket === "today" : r.bucket === due));
       }
       if (q.trim()) {
-        const safe = q.trim().toLowerCase();
-        dueRows = dueRows.filter((r) => {
-          const firm = r.firms?.name ?? "";
-          const client = r.platform_applications?.client_name ?? "";
-          return firm.toLowerCase().includes(safe) || client.toLowerCase().includes(safe) || r.title.toLowerCase().includes(safe);
-        });
+        dueRows = dueRows.filter((r) =>
+          matchesSearch([r.firms?.name, r.platform_applications?.client_name, r.title], q),
+        );
       }
 
       const total = dueRows.length;
@@ -304,6 +313,33 @@ function FollowUpsDuePage() {
               </SelectContent>
             </Select>
           )}
+          <Select value={pipelineStatus} onValueChange={setPipelineStatus}>
+            <SelectTrigger className="w-[220px]"><SelectValue placeholder="All statuses" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All statuses</SelectItem>
+              <SelectSeparator />
+              <SelectGroup>
+                <SelectLabel>Sales status</SelectLabel>
+                {SALES_OPTIONS.map((s) => (
+                  <SelectItem key={`sales:${s}`} value={s}>{statusLabel(s)}</SelectItem>
+                ))}
+              </SelectGroup>
+              <SelectSeparator />
+              <SelectGroup>
+                <SelectLabel>Onboarding stage</SelectLabel>
+                {ONBOARDING_FLOW.map((s) => (
+                  <SelectItem key={`onboarding:${s}`} value={s}>{statusLabel(s)}</SelectItem>
+                ))}
+              </SelectGroup>
+              <SelectSeparator />
+              <SelectGroup>
+                <SelectLabel>Application status</SelectLabel>
+                {APPLICATION_SUBSTATUSES.map((s) => (
+                  <SelectItem key={`application:${s}`} value={s}>{statusLabel(s)}</SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
         </CardContent>
       </Card>
 

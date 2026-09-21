@@ -17,6 +17,7 @@ import {
   platformApplicationUrl,
   platformStatusLabel,
 } from "@/lib/platform-applications";
+import { matchesSearch } from "@/lib/search-match";
 
 type ApplicationsSearch = { session?: string };
 
@@ -60,23 +61,21 @@ function ApplicationsPage() {
   const attorneyOptions = Array.from(
     new Set(rows.map(r => r.attorney_name || r.attorney_email || '').filter(Boolean))
   ).sort();
+  const statusOptions = Array.from(
+    new Set(rows.map(r => platformStatusLabel(r.status, r.funded_amount)))
+  ).sort();
 
   const filtered = rows.filter((r) => {
     if (sessionFilter) return r.session_id === sessionFilter;
     const label = platformStatusLabel(r.status, r.funded_amount);
-    const q = search.toLowerCase();
-    const matchesSearch =
-      !q ||
-      r.client_name.toLowerCase().includes(q) ||
-      (r.firm_name ?? '').toLowerCase().includes(q) ||
-      (r.client_email ?? '').toLowerCase().includes(q);
+    const searchMatches = matchesSearch([r.client_name, r.firm_name, r.client_email], search);
     const matchesStatus =
       status === 'all' ||
       (status === 'None' && !r.status?.trim()) ||
       label === status;
     const attorneyKey = r.attorney_name || r.attorney_email || '';
     const matchesAttorney = attorney === 'all' || attorneyKey === attorney;
-    return matchesSearch && matchesStatus && matchesAttorney;
+    return searchMatches && matchesStatus && matchesAttorney;
   });
 
   const handleRefresh = async () => {
@@ -160,6 +159,15 @@ function ApplicationsPage() {
                 <SelectItem value="all">All attorneys</SelectItem>
                 {attorneyOptions.map(a => (
                   <SelectItem key={a} value={a}>{a}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={status} onValueChange={setStatus}>
+              <SelectTrigger className="w-[220px]"><SelectValue placeholder="All statuses" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All statuses</SelectItem>
+                {statusOptions.map(s => (
+                  <SelectItem key={s} value={s}>{s}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
