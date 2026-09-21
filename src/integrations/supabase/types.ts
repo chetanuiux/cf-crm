@@ -898,6 +898,7 @@ export type Database = {
           raw_status: string | null
           request_id: string | null
           session_id: string
+          started_by: string | null
           substatus: string
           substatus_entered_at: string
           updated_at: string
@@ -921,6 +922,7 @@ export type Database = {
           raw_status?: string | null
           request_id?: string | null
           session_id: string
+          started_by?: string | null
           substatus?: string
           substatus_entered_at?: string
           updated_at?: string
@@ -944,6 +946,7 @@ export type Database = {
           raw_status?: string | null
           request_id?: string | null
           session_id?: string
+          started_by?: string | null
           substatus?: string
           substatus_entered_at?: string
           updated_at?: string
