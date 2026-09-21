@@ -87,8 +87,14 @@ type FollowUpRow = {
   firm_id: string | null;
   platform_session_id: string | null;
   assigned_to: string | null;
-  firms: { id: string; name: string } | null;
-  platform_applications: { session_id: string; client_name: string; firm_name: string | null } | null;
+  firms: { id: string; name: string; email: string | null } | null;
+  platform_applications: {
+    session_id: string;
+    client_name: string;
+    client_email: string | null;
+    firm_name: string | null;
+    attorney_email: string | null;
+  } | null;
 };
 
 type DueBucket = "overdue" | "today" | "upcoming" | "later";
@@ -171,7 +177,7 @@ function FollowUpsDuePage() {
     queryFn: async () => {
       let query = supabase
         .from("follow_ups")
-        .select("id,kind,source,status,pipeline_status,due_at,is_internal,title,message,firm_id,platform_session_id,assigned_to,firms(id,name),platform_applications(session_id,client_name,firm_name)")
+        .select("id,kind,source,status,pipeline_status,due_at,is_internal,title,message,firm_id,platform_session_id,assigned_to,firms(id,name,email),platform_applications(session_id,client_name,client_email,firm_name,attorney_email)")
         .in("status", ["pending", "notified"])
         .order("due_at", { ascending: false });
 
@@ -197,7 +203,18 @@ function FollowUpsDuePage() {
       }
       if (q.trim()) {
         dueRows = dueRows.filter((r) =>
-          matchesSearch([r.firms?.name, r.platform_applications?.client_name, r.title], q),
+          matchesSearch(
+            [
+              r.firms?.name,
+              r.firms?.email,
+              r.platform_applications?.client_name,
+              r.platform_applications?.client_email,
+              r.platform_applications?.firm_name,
+              r.platform_applications?.attorney_email,
+              r.title,
+            ],
+            q,
+          ),
         );
       }
 
@@ -281,7 +298,7 @@ function FollowUpsDuePage() {
       <Card>
         <CardContent className="p-3 flex flex-wrap gap-2 items-center">
           <Input
-            placeholder="Search firm or client…"
+            placeholder="Search firm, client, email…"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             className="max-w-xs"
@@ -400,6 +417,7 @@ function FollowUpsDuePage() {
                   ? (f.firms?.name ?? "Firm")
                   : (f.platform_applications?.client_name ?? "Application");
                 const sub = f.kind === "application" ? f.platform_applications?.firm_name : null;
+                const email = f.kind === "sales" ? f.firms?.email : f.platform_applications?.client_email;
                 return (
                   <TableRow
                     key={f.id}
@@ -421,6 +439,7 @@ function FollowUpsDuePage() {
                         {name}
                       </div>
                       {sub && <div className="text-xs text-muted-foreground mt-0.5">{sub}</div>}
+                      {email && <div className="text-xs text-muted-foreground mt-0.5">{email}</div>}
                       {f.is_internal && <div className="text-[11px] text-muted-foreground mt-0.5">Internal review — contact the firm only if they need to act</div>}
                     </TableCell>
                     <TableCell className="text-sm">{f.kind === "sales" ? "Sales" : "Application"}{f.source === "manual" ? " · Manual" : ""}</TableCell>

@@ -68,7 +68,10 @@ function ApplicationsPage() {
   const filtered = rows.filter((r) => {
     if (sessionFilter) return r.session_id === sessionFilter;
     const label = platformStatusLabel(r.status, r.funded_amount);
-    const searchMatches = matchesSearch([r.client_name, r.firm_name, r.client_email], search);
+    const searchMatches = matchesSearch(
+      [r.client_name, r.firm_name, r.client_email, r.attorney_name, r.attorney_email],
+      search,
+    );
     const matchesStatus =
       status === 'all' ||
       (status === 'None' && !r.status?.trim()) ||
@@ -152,7 +155,7 @@ function ApplicationsPage() {
       {!sessionFilter && (
         <Card>
           <CardContent className="p-3 flex flex-wrap gap-2 items-center">
-            <Input placeholder="Search client, firm, email…" value={search} onChange={e => setSearch(e.target.value)} className="max-w-xs" />
+            <Input placeholder="Search client, firm, attorney, email…" value={search} onChange={e => setSearch(e.target.value)} className="max-w-xs" />
             <Select value={attorney} onValueChange={setAttorney}>
               <SelectTrigger className="w-[220px]"><SelectValue placeholder="All attorneys" /></SelectTrigger>
               <SelectContent>
@@ -196,7 +199,10 @@ function ApplicationsPage() {
               const crmStatus = mapPlatformStatus(r.status, r.funded_amount);
               return (
                 <TableRow key={r.session_id} className="hover:bg-muted/50">
-                  <TableCell className="font-medium max-w-50 truncate" title={r.client_name}>{r.client_name}</TableCell>
+                  <TableCell className="max-w-50" title={r.client_name}>
+                    <div className="font-medium truncate">{r.client_name}</div>
+                    {r.client_email && <div className="text-xs text-muted-foreground truncate">{r.client_email}</div>}
+                  </TableCell>
                   <TableCell>{r.firm_name ?? '—'}</TableCell>
                   <TableCell>{fmtMoney(r.loan_amount)}</TableCell>
                   <TableCell>
