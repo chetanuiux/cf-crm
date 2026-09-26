@@ -179,10 +179,11 @@ function answerText(answer: LinkedInAnswer, question?: LinkedInQuestion): string
     const options = asRecord(question.questionDetails)?.multipleChoiceQuestionDetails;
     const optionList = asRecord(options)?.options;
     if (Array.isArray(optionList)) {
+      // Answers reference options by optionId; fall back to array index for older payloads.
       const labels = (choice.options as unknown[])
-        .map((idx) => {
-          if (typeof idx !== 'number') return null;
-          const opt = asRecord(optionList[idx]);
+        .map((ref) => {
+          const byId = optionList.find((o) => String(asRecord(o)?.optionId) === String(ref));
+          const opt = asRecord(byId ?? (typeof ref === 'number' ? optionList[ref] : null));
           return localizedText(opt?.text);
         })
         .filter((v): v is string => Boolean(v));
