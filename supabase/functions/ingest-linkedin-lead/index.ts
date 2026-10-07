@@ -15,7 +15,8 @@ import {
   type NormalizedLead,
 } from '../_shared/linkedin-lead.ts';
 
-const LINKEDIN_API_VERSION = Deno.env.get('LINKEDIN_API_VERSION') ?? '202508';
+// LinkedIn sunsets API versions ~1 year after release; override via env when needed.
+const LINKEDIN_API_VERSION = Deno.env.get('LINKEDIN_API_VERSION') ?? '202608';
 const EXPECTED_ACCOUNT_ID =
   Deno.env.get('LINKEDIN_AD_ACCOUNT_ID') ?? LINKEDIN_AD_ACCOUNT_ID;
 
@@ -41,11 +42,53 @@ async function linkedinGet(path: string, token: string): Promise<JsonRecord> {
   return JSON.parse(text) as JsonRecord;
 }
 
-async function fetchLinkedInLead(notification: JsonRecord): Promise<NormalizedLead> {
+let cachedToken: { value: string; expiresAt: number } | null = null;
+
+// Tokens from the Developer Portal token generator expire after 60 days. When a
+// refresh token is configured, mint access tokens from it (valid ~1 year) and
+// fall back to the static LINKEDIN_ACCESS_TOKEN otherwise.
+async function getAccessToken(): Promise<string> {
+  if (cachedToken && cachedToken.expiresAt > Date.now()) return cachedToken.value;
+
+  const refreshToken = Deno.env.get('LINKEDIN_REFRESH_TOKEN');
+  const clientId = Deno.env.get('LINKEDIN_CLIENT_ID');
+  const clientSecret = Deno.env.get('LINKEDIN_CLIENT_SECRET');
+  if (refreshToken && clientId && clientSecret) {
+    try {
+      const res = await fetch('https://www.linkedin.com/oauth/v2/accessToken', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          grant_type: 'refresh_token',
+          refresh_token: refreshToken,
+          client_id: clientId,
+          client_secret: clientSecret,
+        }),
+      });
+      const json = (await res.json()) as JsonRecord;
+      if (res.ok && typeof json.access_token === 'string') {
+        const ttlSeconds = typeof json.expires_in === 'number' ? json.expires_in : 3600;
+        cachedToken = {
+          value: json.access_token,
+          expiresAt: Date.now() + Math.max(ttlSeconds - 300, 60) * 1000,
+        };
+        return json.access_token;
+      }
+      console.error('LinkedIn token refresh failed', res.status, JSON.stringify(json).slice(0, 400));
+    } catch (err) {
+      console.error('LinkedIn token refresh error', err);
+    }
+  }
+
   const token = Deno.env.get('LINKEDIN_ACCESS_TOKEN');
   if (!token) {
     throw new Error('LINKEDIN_ACCESS_TOKEN is not configured');
   }
+  return token;
+}
+
+async function fetchLinkedInLead(notification: JsonRecord): Promise<NormalizedLead> {
+  const token = await getAccessToken();
 
   const accountId = extractSponsoredAccountId(notification.owner) ?? EXPECTED_ACCOUNT_ID;
   if (accountId && accountId !== EXPECTED_ACCOUNT_ID) {
