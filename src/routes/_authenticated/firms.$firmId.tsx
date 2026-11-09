@@ -179,7 +179,7 @@ export const Route = createFileRoute("/_authenticated/firms/$firmId")({ componen
 
 const NOTE_TYPES = ["general","call_log","email","meeting","follow_up","support","payment_funding","unable_to_reach"];
 // Note types that prefill the note body when selected.
-const NOTE_TYPE_DEFAULT_BODY: Record<string, string> = { unable_to_reach: "Unable to reach" };
+const NOTE_TYPE_DEFAULT_BODY: Record<string, string> = { unable_to_reach: "Unable to reach / Voicemail" };
 
 function FirmDetail() {
   const { firmId } = Route.useParams();
@@ -593,7 +593,7 @@ function FirmDetail() {
           <Card><CardContent className="p-3 space-y-2">
             <div className="flex gap-2">
               <Select value={noteType} onValueChange={changeNoteType}><SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
-                <SelectContent>{NOTE_TYPES.map(n => <SelectItem key={n} value={n}>{titleize(n)}</SelectItem>)}</SelectContent>
+                <SelectContent>{NOTE_TYPES.map(n => <SelectItem key={n} value={n}>{statusLabel(n)}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             <Textarea placeholder="Add a note…" value={noteBody} onChange={e=>setNoteBody(e.target.value)} disabled={!canWrite} />

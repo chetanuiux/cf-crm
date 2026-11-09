@@ -4,9 +4,14 @@ import { STATUS_LABELS } from "@/lib/pipeline-status";
 export const titleize = (s: string | null | undefined) =>
   (s ?? "").split("_").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
 
+// Display labels for note_type values whose titleized form isn't what users should see.
+export const NOTE_TYPE_LABELS: Record<string, string> = {
+  unable_to_reach: "Unable to Reach / Voicemail",
+};
+
 export function statusLabel(s: string | null | undefined): string {
   if (!s) return "";
-  return STATUS_LABELS[s] ?? titleize(s);
+  return STATUS_LABELS[s] ?? NOTE_TYPE_LABELS[s] ?? titleize(s);
 }
 
 export const formatLocation = (city: string | null | undefined, state: string | null | undefined) =>
