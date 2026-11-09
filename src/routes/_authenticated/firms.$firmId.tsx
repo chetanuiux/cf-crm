@@ -177,7 +177,9 @@ function buildOnboardingSteps(current: string, locked: boolean): Step[] {
 
 export const Route = createFileRoute("/_authenticated/firms/$firmId")({ component: FirmDetail });
 
-const NOTE_TYPES = ["general","call_log","email","meeting","follow_up","support","payment_funding"];
+const NOTE_TYPES = ["general","call_log","email","meeting","follow_up","support","payment_funding","unable_to_reach"];
+// Note types that prefill the note body when selected.
+const NOTE_TYPE_DEFAULT_BODY: Record<string, string> = { unable_to_reach: "Unable to reach" };
 
 function FirmDetail() {
   const { firmId } = Route.useParams();
@@ -284,6 +286,14 @@ function FirmDetail() {
 
   const [noteBody, setNoteBody] = useState("");
   const [noteType, setNoteType] = useState("general");
+  // Prefill the default body for types that have one, without clobbering text the user typed.
+  const changeNoteType = (next: string) => {
+    const prevDefault = NOTE_TYPE_DEFAULT_BODY[noteType];
+    const nextDefault = NOTE_TYPE_DEFAULT_BODY[next];
+    const untouched = !noteBody.trim() || noteBody === prevDefault;
+    if (untouched) setNoteBody(nextDefault ?? "");
+    setNoteType(next);
+  };
   const [editProfile, setEditProfile] = useState(false);
   const [profileDraft, setProfileDraft] = useState({ state: "", firm_size: "", practice_areas: "", assigned_account_manager: "" });
 
@@ -314,7 +324,7 @@ function FirmDetail() {
       action_type: "note_added", description: `Note added (${noteType})`,
       performed_by: profile?.id ?? null, performed_by_role: roles[0] ?? null,
     });
-    setNoteBody("");
+    setNoteBody(NOTE_TYPE_DEFAULT_BODY[noteType] ?? "");
     qc.invalidateQueries({ queryKey: ["firm-notes", firmId] });
     qc.invalidateQueries({ queryKey: ["firm-activity", firmId] });
     toast.success("Note added");
@@ -582,7 +592,7 @@ function FirmDetail() {
         <TabsContent value="notes" className="space-y-3">
           <Card><CardContent className="p-3 space-y-2">
             <div className="flex gap-2">
-              <Select value={noteType} onValueChange={setNoteType}><SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
+              <Select value={noteType} onValueChange={changeNoteType}><SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
                 <SelectContent>{NOTE_TYPES.map(n => <SelectItem key={n} value={n}>{titleize(n)}</SelectItem>)}</SelectContent>
               </Select>
             </div>

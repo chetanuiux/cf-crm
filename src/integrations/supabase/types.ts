@@ -1473,6 +1473,7 @@ export type Database = {
         | "follow_up"
         | "support"
         | "payment_funding"
+        | "unable_to_reach"
       payment_processor: "confido" | "stripe" | "manual" | "other" | "not_set"
       payment_to_firm_status:
         | "not_started"
@@ -1776,6 +1777,7 @@ export const Constants = {
         "follow_up",
         "support",
         "payment_funding",
+        "unable_to_reach",
       ],
       payment_processor: ["confido", "stripe", "manual", "other", "not_set"],
       payment_to_firm_status: [
